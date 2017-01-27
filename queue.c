@@ -6,8 +6,8 @@
 
 #define BUFFER_LIMIT 2048
 
-onOutOfMem_cb_t onOutOfMemory;
-onIllegalOperation_cb_t onIllegalOperation;
+static onOutOfMem_cb_t onOutOfMemory;
+static onIllegalOperation_cb_t onIllegalOperation;
 
 
 //Creates a FIFO byte queue, returning a handle to it.
