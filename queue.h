@@ -5,6 +5,10 @@
 
 typedef int Q;
 
+// Sets buffer to work with and inits library, returs nubmer of elements max
+int initQueues(unsigned char* buffer, int len);
+
+
 // Creates a FIFO byte queue, returning a handle to it.
 Q* createQueue();
 
@@ -36,6 +40,7 @@ void setOutOfMemoryCallback(onOutOfMem_cb_t cb);
 // When illegal request, like attempting to dequeue a byte from an empty queue
 // this callback will be called, which should not return
 void setIllegalOperationCallback(onIllegalOperation_cb_t cb);
+
 
 
 #endif // QUEUE_H

@@ -83,14 +83,14 @@ typedef struct
 
 
 // Static buffer for data, and some aliases
-#define BUFFER_LIMIT 2048
-static unsigned char buffer[BUFFER_LIMIT] = {0};
-static node_t* const pstart = (node_t*) buffer;
-static node_t* const pend   = (node_t*) (buffer + BUFFER_LIMIT);
+static unsigned char* buffer;
+static node_t* pstart;
+static node_t* pend;
+static int buffer_len;
 
 
 // Dynamic pointer
-static node_t* pfree = (node_t*) buffer;
+static node_t* pfree;
 
 
 
@@ -264,8 +264,10 @@ static inline node_t* get_prw(node_t* node)
 
 static node_t* get_free_node()
 {
-    if (pfree == pend)
+    if (pfree == pend) {
         onOutOfMemory();
+        return NULL;
+    }
 
     node_t* ret = pfree;
 
@@ -357,12 +359,36 @@ static void insert_after_root(node_t* root, node_t* newman)
 // ========================================================================== //
 
 
+int initQueues(unsigned char* buf, int len)
+{
+    assert(sizeof(node_t) == 4); // make sure pad/packing work
+    assert(buf != NULL);
+    assert(len >= 4); // at least one node ;)
+
+
+    buffer = buf;
+    buffer_len = len;
+
+    int max_nodes = len / sizeof(node_t);
+
+    pstart = (node_t*) buf;
+    pend = pstart + max_nodes;
+    pfree = pstart;
+
+    return max_nodes;
+}
+
+
 Q* createQueue()
 {
     /* printf("size = %lu \n", sizeof(node_t)); */
 
     // create new empty root node and return it as handle
     node_t* root = get_free_node();
+
+    if (root == NULL)
+        return NULL;
+
     make_empty_root(root);
     return (Q*)root;
 }
@@ -370,8 +396,12 @@ Q* createQueue()
 void destroyQueue(Q* q)
 {
     node_t* root = (node_t*)q;
-    if (!bounds_check(root))
+
+    if (!bounds_check(root) || !is_root(root))
+    {
         onIllegalOperation();
+        return;
+    }
 
     // Slow =( : need to kill all elements
     while (!is_empty_root(root))
@@ -384,8 +414,12 @@ void destroyQueue(Q* q)
 void enqueueByte(Q* q, unsigned char b)
 {
     node_t* root = (node_t*)q;
-    if (!bounds_check(root))
+
+    if (!bounds_check(root) || !is_root(root))
+    {
         onIllegalOperation();
+        return;
+    }
 
     if (is_empty_root(root))
     {
@@ -394,6 +428,9 @@ void enqueueByte(Q* q, unsigned char b)
     }
 
     node_t* newman = get_free_node();
+    if (newman == NULL)
+        return;
+
     make_node(newman, b);
     insert_after_root(root, newman);
 
@@ -402,19 +439,18 @@ void enqueueByte(Q* q, unsigned char b)
 unsigned char dequeueByte(Q* q)
 {
     node_t* root = (node_t*)q;
-    if (!bounds_check(root))
+
+    if (!bounds_check(root) || !is_root(root) || is_empty_root(root))
+    {
         onIllegalOperation();
+        return 0;
+    }
 
-    if (is_empty_root(root))
-        onIllegalOperation(); // must not return
-
-    // TODO: copy_data_to_root can hande this too
     node_t* prew = get_prw(root);
     if (prew == root) {
         // only root is here -> make it empty
         return extract_root_data(root);
     }
-
 
     unsigned char data = copy_data_to_root(root, prew);
     exclude_from_chain(prew);
@@ -426,8 +462,12 @@ unsigned char dequeueByte(Q* q)
 void printQueue(Q* q)
 {
     node_t* root = (node_t*)q;
+
     if (!bounds_check(root))
+    {
         onIllegalOperation();
+        return;
+    }
 
     if (is_empty_root(root))
     {
