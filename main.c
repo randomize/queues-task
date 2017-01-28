@@ -31,18 +31,18 @@ int main(void)
     enqueueByte(q0, 2);
     enqueueByte(q1, 4);
 
-    printf("%d ", dequeueByte(q0));
-    printf("%d\n", dequeueByte(q0));
+    printf("%d ", dequeueByte(q0));  // 0
+    printf("%d\n", dequeueByte(q0)); // 1
 
     enqueueByte(q0, 5);
     enqueueByte(q1, 6);
 
-    printf("%d ", dequeueByte(q0));
-    printf("%d\n", dequeueByte(q0));
+    printf("%d ", dequeueByte(q0));  // 2
+    printf("%d\n", dequeueByte(q0)); // 5
 
     destroyQueue(q0);
 
-    printf("%d ", dequeueByte(q1));
+    printf("%d ", dequeueByte(q1));  // 3 4 6
     printf("%d ", dequeueByte(q1));
     printf("%d\n", dequeueByte(q1));
 
