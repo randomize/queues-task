@@ -9,11 +9,18 @@
  
 Preconditions:
 
-    assume sizeof(int) = 4
-    CHAR_BIT == 8
+    assume sizeof(int) == sizeof(node_t) == 4
+    assume that CHAR_BIT == 8
+    best alignment on target platform is 4
 
 
-    Implemented as 2-linked list, each node takes 4 bytes, because of best alignment
+    Queues are implemented as double-linked lists, each node
+    has payload of 1 byte and 2x9 bits for two indexes.
+    Node takes 4 bytes, because of alignment so indexes have
+    12 bits, in case buffer_len is bigger then 2048 (max 16384)
+
+    Only one int value at begigging of buffer is used by allocttor,
+    so maximum payload count is 511 (2048/4 - 1)
 
 
 Performance:
