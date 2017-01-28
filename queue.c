@@ -4,15 +4,68 @@
 #include <stdlib.h>
 #include <assert.h>
 
-// assume int = 4 x char and CHAR_BIT == 8
-// Need ajustmens for other platforms
-// ints are aligned by 4
-// TODO: how to force compile time check?
+/*
+ assume int = 4 x char and CHAR_BIT == 8
+ Need ajustmens for other platforms
+ ints are aligned by 4
+ TODO: how to force compile time check?
+
+ Implemented as 2-linked list, each node is an int, because of best alignment
+ enqueueByte/dequeueByte garanteed to be linear in time on average amortized,
+ worst case is linear to nubmer of queues.
 
 
-// Callbacks
-static onOutOfMem_cb_t onOutOfMemory;
-static onIllegalOperation_cb_t onIllegalOperation;
+ Stucture of bit fields
+ XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX 
+ [ data ] [    nxt    ][    prw    ]  
+ 
+ data    = 8 bit of unsigned char payload
+ nxt = index of next node
+ prw = index of prew node
+
+ Some conventions: 
+
+      node types:
+          root node - used as handle and also has data
+          normal node - for data only
+
+      root node states:
+          empty - state when queue was just created
+          data - node has payload, represents "current element"
+
+      *int where node is stored is called 'place'
+
+ To distinguish node states nxt and  prw can have neganive values:
+
+      1. Only positive part used for offsets;
+      2. Negative vals have special meaning: 
+          nxt < 0 means node has no data.
+          prw < 0 means node is root
+
+
+ Allocation/Deallocation:
+
+          Standard free pointer increment for allocation and swap+decrement 
+      for deallocation idiom used. Pointer prfee set to highest free place.
+      Still, a twist exists - root node address are used as handles because of
+      memory constrain. These should never be moved/swaped.
+          When a node is allocated - prfee is advanced until it points to 
+      free node place. When a node is deallocated swap iniom is used:
+          prfree decrements and if it points to normal node its swapped
+          if it points to root node, prfree decrements until finds normal node or reaches node deallocated
+
+ Dequeue:
+      use handre as pointer to node, read root node.
+      If its empty - raise error
+      if its single el - pop it, set empty
+      if it has prew = copy data, copy prew to root, deallocate prew
+ Enquoue:
+      use handre as pointer to node, read root node.
+      if its empty - write val, set sign
+ */
+      
+
+// ========================================================================== //
 
 
 // Static buffer for data, and some aliases
@@ -21,64 +74,27 @@ static const unsigned char buffer[BUFFER_LIMIT] = {0};
 static const int* pstart = (int*) buffer;
 static const int* pend   = (int*) (buffer + BUFFER_LIMIT);
 
+
 // Dynamic pointer
 static int* pfree = (int*) buffer;
 
-// Implemented as 2-linked list, each node is an int, because of best alignment
-// enqueueByte/dequeueByte garanteed to be linear in time on average amortized,
-// worst case is linear to nubmer of queues.
-//
-//
-// Stucture of bit fields
-// XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX 
-// [ data ] [    nxt    ][    prw    ]  
-// 
-// data    = 8 bit of unsigned char payload
-// nxt = index of next node
-// prw = index of prew node
-//
-// Some conventions: 
-//
-//      node types:
-//          root node - used as handle and also has data
-//          normal node - for data only
-//
-//      root node states:
-//          empty - state when queue was just created
-//          data - node has payload, represents "current element"
-//
-// To distinguish node states nxt, prw can have neganive values:
-//
-//      1. Only positive part used for offsets;
-//      2. Negative have spetial meaning: 
-//          nxt < 0 means node has no data.
-//          prw < 0 means node is root
-//
-//
-// Allocation:
-//      prfee is pointing to highest free node place
-//      when a node is allocated - prfee is advanced until it points to free node place
-//      wnen node is deallocated swap iniom is used:
-//          prfree decrements and if it points to normal node its swapped
-//          if it points to root node, prfree decrements until finds normal node or reaches node deallocated
-//
-// Dequeue:
-//      use handre as pointer to node, read root node.
-//      If its empty - raise error
-//      if its single el - pop it, set empty
-//      if it has prew = copy data, copy prew to root, deallocate prew
-// Enquoue:
-//      use handre as pointer to node, read root node.
-//      if its empty - write val, set sign
-//      
-//
 
 // 32 bit bit filed node struct to access data and indexes
-typedef struct { 
+typedef struct
+{ 
     unsigned char data  : 8  ;
     signed short  nxt   : 12 ;
     signed short  prw   : 12 ;
 } node_t;
+
+
+// Callbacks
+static onOutOfMem_cb_t onOutOfMemory;
+static onIllegalOperation_cb_t onIllegalOperation;
+
+
+// ========================================================================== //
+
 
 static inline int bounds_check(int* place)
 {
@@ -94,13 +110,39 @@ static inline int is_root(int* place)
     return this_n->prw < 0;
 }
 
+// creates emty root
+static inline void make_empty_root(int* place)
+{
+    assert(bounds_check(place));
+
+    *place = 0;
+    node_t* this_n = (node_t*) place;
+    this_n->prw = -1; // root
+    this_n->nxt = -1; // has no data
+}
+
 // empty root has no data
 static inline int is_empty_root(int* place)
 {
     assert(bounds_check(place));
+    assert(is_root(place));
 
     node_t* this_n = (node_t*) place;
     return this_n->nxt < 0;
+}
+
+// adds data to emty root
+static inline void fill_empty_root(int* place, unsigned char data)
+{
+    assert(bounds_check(place));
+    assert(is_empty_root(place));
+    assert(is_root(place));
+
+    node_t* this_n = (node_t*) place;
+    short d = place - pstart;
+
+    this_n->prw = -d; // root
+    this_n->nxt = d ; // has data
 }
 
 // helpers to get/set to write sign indexes
@@ -140,7 +182,7 @@ static inline int* get_prw(node_t* node)
 // Updates next and prew node in chain 
 // to link to place, because its new place for node
 // only may be used on non empty root nodes
-void updateChain(int* place)
+static void updateChain(int* place)
 {
 
     assert(place != NULL);
@@ -160,7 +202,7 @@ void updateChain(int* place)
 
 // Only non root nodes can be moved
 // Erases to and updates links in froms neibourgs
-void moveNode(int* place, int* new_place)
+static void moveNode(int* place, int* new_place)
 {
     assert(bounds_check(place));
     assert(bounds_check(new_place));
@@ -171,7 +213,7 @@ void moveNode(int* place, int* new_place)
 }
 
 // Short ciruts neibours to prepare exclude node at place
-void excludeFromChain(int* place)
+static void excludeFromChain(int* place)
 {
     assert(bounds_check(place));
     assert(!is_root(place));
@@ -190,37 +232,74 @@ void excludeFromChain(int* place)
     set_nxt(prew_n, next);
     set_prw(next_n, prew);
 }
-    
 
-//Creates a FIFO byte queue, returning a handle to it.
+// gets new node to work with
+static int* get_free_node()
+{
+    if (pfree == pend)
+        onOutOfMemory();
+
+    int* ret = pfree;
+
+    // Advance pointer, untill reaches free place
+    while (++pfree != pend && is_root(pfree));
+    
+    return ret;
+}
+    
+static void cleanup_node(int* place)
+{
+    place* = 0;
+    // TODO: need usecase for this firs
+}
+
+
+// ========================================================================== //
+
+
 Q* createQueue()
 {
-    return NULL;
+    // create new empty root node and return it as handle
+    int* root = get_free_node();
+    make_empty_root(root);
+    return root;
 }
 
-
-//Destroy an earlier created byte queue.
 void destroyQueue(Q* q)
 {
+    int* root = q;
+    if (!bounds_check(root)) 
+        onIllegalOperation();
 
+    // TODO: DESTROY contents??????
 }
 
-
-//Adds a new byte to a queue.
 void enqueueByte(Q* q, unsigned char b)
 {
+    int* root = q;
+    if (!bounds_check(root)) 
+        onIllegalOperation();
+
+    if (is_empty_root(root))
+    {
+        fill_empty_root(root, b);
+        return;
+    }
+    
+    int* place = get_free_node();
+
+    // TODO: put
 
 }
 
-
-// Pops the next byte off the FIFO queue.
 unsigned char dequeueByte(Q* q)
 {
-    if (is_empty_root(q))
-    {
+    int* root = q;
+    if (!bounds_check(root)) 
+        onIllegalOperation();
+
+    if (is_empty_root(root))
         onIllegalOperation(); // must not return
-        return 0;
-    }
 
     // TODO:
 
@@ -232,7 +311,6 @@ void setOutOfMemoryCallback(onOutOfMem_cb_t cb)
     assert(cb != NULL);
     onOutOfMemory = cb;
 }
-
 
 void setIllegalOperationCallback(onIllegalOperation_cb_t cb)
 {
