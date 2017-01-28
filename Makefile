@@ -1,7 +1,7 @@
 
 CC=gcc
 CFLAGS=-c -Wall -I. -Wall -Wextra -Wpedantic -std=c11 -ggdb -O0
-LDFLAGS=
+LDFLAGS=-lcmocka
 SOURCES=main.c queue.c
 OBJECTS=$(SOURCES:.c=.o)
 EXECUTABLE=queue
