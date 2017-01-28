@@ -16,14 +16,14 @@
 
 
  Stucture of bit fields
- XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX 
- [ data ] [    nxt    ][    prw    ]  
- 
+ XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX
+ [ data ] [    nxt    ][    prw    ]
+
  data    = 8 bit of unsigned char payload
  nxt = index of next node
  prw = index of prew node
 
- Some conventions: 
+ Some conventions:
 
       node types:
           root node - used as handle and also has data
@@ -38,18 +38,18 @@
  To distinguish node states nxt and  prw can have neganive values:
 
       1. Only positive part used for offsets;
-      2. Negative vals have special meaning: 
+      2. Negative vals have special meaning:
           nxt < 0 means node has no data.
           prw < 0 means node is root
 
 
  Allocation/Deallocation:
 
-          Standard free pointer increment for allocation and swap+decrement 
+          Standard free pointer increment for allocation and swap+decrement
       for deallocation idiom used. Pointer prfee set to highest free place.
       Still, a twist exists - root node address are used as handles because of
       memory constrain. These should never be moved/swaped.
-          When a node is allocated - prfee is advanced until it points to 
+          When a node is allocated - prfee is advanced until it points to
       free node place. When a node is deallocated swap iniom is used:
           prfree decrements and if it points to normal node its swapped
           if it points to root node, prfree decrements until finds normal node or reaches node deallocated
@@ -63,7 +63,7 @@
       use handre as pointer to node, read root node.
       if its empty - write val, set sign
  */
-      
+
 
 // ========================================================================== //
 
@@ -81,7 +81,7 @@ static int* pfree = (int*) buffer;
 
 // 32 bit bit filed node struct to access data and indexes
 typedef struct
-{ 
+{
     unsigned char data  : 8  ;
     signed short  nxt   : 12 ;
     signed short  prw   : 12 ;
@@ -178,8 +178,8 @@ static inline int* get_prw(node_t* node)
 
     return (int*) (pstart + abs(node->prw));
 }
-    
-// Updates next and prew node in chain 
+
+// Updates next and prew node in chain
 // to link to place, because its new place for node
 // only may be used on non empty root nodes
 static void updateChain(int* place)
@@ -243,10 +243,10 @@ static int* get_free_node()
 
     // Advance pointer, untill reaches free place
     while (++pfree != pend && is_root(pfree));
-    
+
     return ret;
 }
-    
+
 static void cleanup_node(int* place)
 {
     place* = 0;
@@ -268,7 +268,7 @@ Q* createQueue()
 void destroyQueue(Q* q)
 {
     int* root = q;
-    if (!bounds_check(root)) 
+    if (!bounds_check(root))
         onIllegalOperation();
 
     // TODO: DESTROY contents??????
@@ -277,7 +277,7 @@ void destroyQueue(Q* q)
 void enqueueByte(Q* q, unsigned char b)
 {
     int* root = q;
-    if (!bounds_check(root)) 
+    if (!bounds_check(root))
         onIllegalOperation();
 
     if (is_empty_root(root))
@@ -285,7 +285,7 @@ void enqueueByte(Q* q, unsigned char b)
         fill_empty_root(root, b);
         return;
     }
-    
+
     int* place = get_free_node();
 
     // TODO: put
@@ -295,7 +295,7 @@ void enqueueByte(Q* q, unsigned char b)
 unsigned char dequeueByte(Q* q)
 {
     int* root = q;
-    if (!bounds_check(root)) 
+    if (!bounds_check(root))
         onIllegalOperation();
 
     if (is_empty_root(root))
