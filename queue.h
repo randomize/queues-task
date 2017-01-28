@@ -5,21 +5,23 @@
 
 typedef int Q;
 
-//Creates a FIFO byte queue, returning a handle to it.
+// Creates a FIFO byte queue, returning a handle to it.
 Q* createQueue();
 
 
-//Destroy an earlier created byte queue.
+// Destroy an earlier created byte queue.
 void destroyQueue(Q* q);
 
 
-//Adds a new byte to a queue.
+// Adds a new byte to a queue.
 void enqueueByte(Q* q, unsigned char b);
 
 
-//Pops the next byte off the FIFO queue.
+// Pops the next byte off the FIFO queue.
 unsigned char dequeueByte(Q* q);
 
+// Debug only print
+void printQueue(Q* q);
 
 // Callbacks
 typedef void (*onOutOfMem_cb_t)();
