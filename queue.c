@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <memory.h>
 
 /*
  
@@ -31,13 +32,11 @@ Memory:
     Stucture of bit fields;
 
          XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX
-         [ data ] [   nxt    ][   prw    ]AB
+         [ data ] [    nxt    ][    prw    ]
 
      data    = 8 bit of unsigned char payload
      nxt = index of next node
      prw = index of prew node
-     A = is_root flag
-     B = is_emtpy flag
 
 
 Some conventions:
@@ -89,10 +88,8 @@ Some conventions:
 typedef struct
 {
     unsigned char data  : 8  ;
-    signed short  nxt   : 11 ;
-    signed short  prw   : 11 ;
-    unsigned char root  : 1  ;
-    unsigned char emtpy : 1  ;
+    signed short  nxt   : 12 ;
+    signed short  prw   : 12 ;
 } __attribute__((packed)) node_t;
 
 
@@ -112,9 +109,6 @@ static onIllegalOperation_cb_t onIllegalOperation;
 
 // helper, returns true if pointer is withit [buffer, buffer + MA
 static inline int bounds_check(node_t* node);
-
-// checks if node is root
-static inline int is_root(node_t* node);
 
 // creates emty root
 static inline void make_empty_root(node_t* node);
@@ -165,18 +159,11 @@ static inline int bounds_check(node_t* node)
     return (node != NULL) && (pstart < node && node < pend);
 }
 
-static inline int is_root(node_t* node)
-{
-    assert(bounds_check(node));
-    return node->root == 1;
-}
-
 static inline void make_empty_root(node_t* node)
 {
     assert(bounds_check(node));
 
-    node->root = 1;
-    node->emtpy = 1;
+    node->nxt = node->prw = 0;
 }
 
 static inline void make_node(node_t* node, unsigned char data)
@@ -184,37 +171,33 @@ static inline void make_node(node_t* node, unsigned char data)
     assert(bounds_check(node));
 
     node->data = data;
-    node->root = 0;
 }
 
 static inline int is_empty_root(node_t* node)
 {
     assert(bounds_check(node));
-    return !is_root(node) ? 0 : node->emtpy == 1;
+    return node->nxt == 0 && node->prw == 0;
 }
 
 static inline void set_empty_root_data(node_t* root, unsigned char data)
 {
     assert(bounds_check(root));
     assert(is_empty_root(root));
-    assert(is_root(root));
 
     short d = root - (node_t*)buffer;
 
     root->prw = d;
     root->nxt = d;
     root->data = data;
-    root->emtpy = 0;
 }
 
 
 static inline unsigned char extract_root_data(node_t* root)
 {
     assert(bounds_check(root));
-    assert(is_root(root));
     assert(!is_empty_root(root));
 
-    root->emtpy = 1;
+    root->nxt = root->prw = 0;
     return root->data;
 }
 
@@ -222,8 +205,6 @@ static inline unsigned char copy_data_to_root(node_t* root, node_t* src)
 {
     assert(bounds_check(root));
     assert(bounds_check(src));
-    assert(is_root(root));
-    assert(!is_root(src));
     assert(src != root);
     assert(!is_empty_root(root));
 
@@ -319,7 +300,6 @@ static void cleanup_node(node_t* node)
 static void exclude_from_chain(node_t* node)
 {
     assert(bounds_check(node));
-    assert(!is_root(node));
 
     node_t* next = get_nxt(node);
     node_t* prew = get_prw(node);
@@ -335,9 +315,7 @@ static void insert_after_root(node_t* root, node_t* newman)
 {
     assert(bounds_check(root));
     assert(bounds_check(newman));
-    assert(is_root(root));
     assert(!is_empty_root(root));
-    assert(!is_root(newman));
 
     node_t* oldman = get_nxt(root); // can be root itself
 
@@ -361,7 +339,7 @@ int initQueues(unsigned char* buf, int len)
     buffer = buf;
     buffer_len = len;
 
-    /* memset(buf, si */
+    memset(buf, 0, len);
     int* pfree = (int*) buf;
     *pfree = 1;
 
@@ -371,8 +349,6 @@ int initQueues(unsigned char* buf, int len)
 
 Q* createQueue()
 {
-    /* printf("size = %lu \n", sizeof(node_t)); */
-
     // create new empty root node and return it as handle
     node_t* root = get_free_node();
 
@@ -387,7 +363,7 @@ void destroyQueue(Q* q)
 {
     node_t* root = (node_t*)q;
 
-    if (!bounds_check(root) || !is_root(root))
+    if (!bounds_check(root))
     {
         onIllegalOperation();
         return;
@@ -405,7 +381,7 @@ void enqueueByte(Q* q, unsigned char b)
 {
     node_t* root = (node_t*)q;
 
-    if (!bounds_check(root) || !is_root(root))
+    if (!bounds_check(root))
     {
         onIllegalOperation();
         return;
@@ -430,7 +406,7 @@ unsigned char dequeueByte(Q* q)
 {
     node_t* root = (node_t*)q;
 
-    if (!bounds_check(root) || !is_root(root) || is_empty_root(root))
+    if (!bounds_check(root) || is_empty_root(root))
     {
         onIllegalOperation();
         return 0;
