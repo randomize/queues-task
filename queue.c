@@ -1,145 +1,194 @@
 
 #include "queue.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <assert.h>
 
 // assume int = 4 x char and CHAR_BIT == 8
 // Need ajustmens for other platforms
 // ints are aligned by 4
+// TODO: how to force compile time check?
 
 
-
-#define BUFFER_LIMIT 2048
-
+// Callbacks
 static onOutOfMem_cb_t onOutOfMemory;
 static onIllegalOperation_cb_t onIllegalOperation;
 
 
-// Static data
+// Static buffer for data, and some aliases
+#define BUFFER_LIMIT 2048
 static const unsigned char buffer[BUFFER_LIMIT] = {0};
-static const unsigned char* buffer_end = buffer + BUFFER_LIMIT;
+static const int* pstart = (int*) buffer;
+static const int* pend   = (int*) (buffer + BUFFER_LIMIT);
 
-// Dynamic pointers
-static int* pst;
-static int* pend;
+// Dynamic pointer
+static int* pfree = (int*) buffer;
 
 // Implemented as 2-linked list, each node is an int, because of best alignment
-// enqueueByte/dequeueByte garanteed to be linear in time
+// enqueueByte/dequeueByte garanteed to be linear in time on average amortized,
+// worst case is linear to nubmer of queues.
 //
 //
 // Stucture of bit fields
 // XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX 
-// [ data ] [ inxnxt ]   [ inxprw ]  #
+// [ data ] [    nxt    ][    prw    ]  
 // 
-// data   = 8 bit of unsigned char payload
-// inxnxt = index of next node 9 bits are enough, but can be 12 in BUFFER_LIMIT is bigger
-// inxprw = index of prew node 9 bits
-// #      = root node flag
-//
-//
-// We allocate first node in any queue in beginning of and work nodes
-// and use them as handles for Queues (Q is typedef to *int)
-//
+// data    = 8 bit of unsigned char payload
+// nxt = index of next node
+// prw = index of prew node
 //
 // Some conventions: 
 //
-//      indexes: inxnxt and inxprw are pointer offsets 'buffer' addr, but
-//      stored as index-1 values, so 0 value has spetial meanin
-//      used as marker
-//      when inxnxt == inxprw != NULL - Queue has 1 item
-//      when inxnxt == NULL
+//      node types:
+//          root node - used as handle and also has data
+//          normal node - for data only
+//
+//      root node states:
+//          empty - state when queue was just created
+//          data - node has payload, represents "current element"
+//
+// To distinguish node states nxt, prw can have neganive values:
+//
+//      1. Only positive part used for offsets;
+//      2. Negative have spetial meaning: 
+//          nxt < 0 means node has no data.
+//          prw < 0 means node is root
 //
 //
+// Allocation:
+//      prfee is pointing to highest free node place
+//      when a node is allocated - prfee is advanced until it points to free node place
+//      wnen node is deallocated swap iniom is used:
+//          prfree decrements and if it points to normal node its swapped
+//          if it points to root node, prfree decrements until finds normal node or reaches node deallocated
+//
+// Dequeue:
+//      use handre as pointer to node, read root node.
+//      If its empty - raise error
+//      if its single el - pop it, set empty
+//      if it has prew = copy data, copy prew to root, deallocate prew
+// Enquoue:
+//      use handre as pointer to node, read root node.
+//      if its empty - write val, set sign
+//      
 //
 
-void initQeuesLib()
-{
-    pst  = (int*) buffer     + 1;
-    pend = (int*) buffer_end - 1;
-}
-
-// 32 bit bit filed struct to access data and indexes
+// 32 bit bit filed node struct to access data and indexes
 typedef struct { 
-    unsigned char data     : 8  ;
-    short         inxnxt   : 12 ;
-    short         inxprw   : 12 ;
-
+    unsigned char data  : 8  ;
+    signed short  nxt   : 12 ;
+    signed short  prw   : 12 ;
 } node_t;
 
+static inline int bounds_check(int* place)
+{
+    return (place != NULL) && (pstart <= place && place < pend);
+}
 
 // empty root has no data
-inline int is_empty_root(int* place)
+static inline int is_root(int* place)
 {
-    assert(place != NULL);
-    assert(buffer <= place && place < buffer_end);
+    assert(bounds_check(place));
 
-    node_t* from_n = (node_t*) place;
-    return from_n->inxprw == 0 && from_n->inxnxt == 0;
+    node_t* this_n = (node_t*) place;
+    return this_n->prw < 0;
 }
 
-// must never be called on empty root
-inline short get_prew_index(int* place)
+// empty root has no data
+static inline int is_empty_root(int* place)
 {
-    assert(place != NULL);
-    assert(buffer <= place && place < buffer_end);
+    assert(bounds_check(place));
 
-    node_t* from_n = (node_t*) place;
-    return from_n->inxprw - 1;
+    node_t* this_n = (node_t*) place;
+    return this_n->nxt < 0;
 }
 
+// helpers to get/set to write sign indexes
+
+static inline void set_nxt(node_t* node, int* place)
+{
+    assert(bounds_check(place));
+
+    short d = place - pstart;
+    node->nxt = node->nxt < 0 ? -d : d;
+}
+
+static inline void set_prw(node_t* node, int* place)
+{
+    assert(bounds_check(place));
+
+    short d = place - pstart;
+    node->prw = node->prw < 0 ? -d : d;
+}
+
+static inline int* get_nxt(node_t* node)
+{
+    assert(bounds_check((int*)node));
+    assert(!is_empty_root(node));
+
+    return (int*) (pstart + abs(node->nxt));
+}
+
+static inline int* get_prw(node_t* node)
+{
+    assert(bounds_check((int*)node));
+    assert(!is_empty_root(node));
+
+    return (int*) (pstart + abs(node->prw));
+}
     
 // Updates next and prew node in chain 
 // to link to place, because its new place for node
+// only may be used on non empty root nodes
 void updateChain(int* place)
 {
 
     assert(place != NULL);
     assert(buffer <= place && place < buffer_end);
+    assert(!is_empty_root(place));
 
-    node_t* from_n = (node_t*) place;
+    node_t* this_n = (node_t*) place;
 
-    short inxnxt = from_n->inxnxt;
-    short inxprw = from_n->inxprw;
+    node_t* next_n = (node_t*) get_nxt(this_n);
+    node_t* prew_n = (node_t*) get_nxt(this_n);
 
-    node_t* prew_n = (node_t*) (buffer + inxnxt);
-    node_t* next_n = (node_t*) (buffer + inxprw);
+    assert(abs(prew_n->nxt) == abs(next_n->prw));
 
-    assert(prew_n->inxnxt == next_n->inxprw);
-    assert(buffer + prew_n->inxnxt == place);
-
-    prew_n->inxnxt = inxprw;
-    next_n->inxprw = inxprw;
+    set_nxt(prew_n, place);
+    set_prw(next_n, place);
 }
 
-// Only non root nodes can be swapped
+// Only non root nodes can be moved
 // Erases to and updates links in froms neibourgs
-void moveNode(int* old_place, int* new_place)
+void moveNode(int* place, int* new_place)
 {
-    *new_place = *old_place;
+    assert(bounds_check(place));
+    assert(bounds_check(new_place));
+    assert(!is_root(place));
 
-
-
+    *new_place = *place;
+    updateChain(new_place);
 }
 
-// Short ciruts neibours to exclude node at place
+// Short ciruts neibours to prepare exclude node at place
 void excludeFromChain(int* place)
 {
-    assert(place != NULL);
-    assert(buffer <= place && place < buffer_end);
+    assert(bounds_check(place));
+    assert(!is_root(place));
 
-    node_t* from_n = (node_t*) place;
+    node_t* this_n = (node_t*) place;
 
-    short inxnxt = from_n->inxnxt;
-    short inxprw = from_n->inxprw;
+    int* next = get_nxt(this_n);
+    int* prew = get_prw(this_n);
 
-    node_t* prew_n = (node_t*) (buffer + inxnxt);
-    node_t* next_n = (node_t*) (buffer + inxprw);
+    node_t* next_n = (node_t*) next;
+    node_t* prew_n = (node_t*) prew;
 
-    assert(prew_n->inxnxt == next_n->inxprw);
-    assert(buffer + prew_n->inxnxt == place);
+    assert(abs(prew_n->inxnxt) == abs(next_n->inxprw));
+    assert(get_prw(prew_n) == place);
 
-    prew_n->inxnxt = inxprw;
-    next_n->inxprw = inxprw;
+    set_nxt(prew_n, next);
+    set_prw(next_n, prew);
 }
     
 
