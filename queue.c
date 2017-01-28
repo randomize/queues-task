@@ -5,27 +5,42 @@
 #include <assert.h>
 
 /*
- assume int = 4 x char and CHAR_BIT == 8
- Need ajustmens for other platforms
- ints are aligned by 4
- TODO: how to force compile time check?
+ 
+Preconditions:
 
- Implemented as 2-linked list, each node is an int, because of best alignment
- enqueueByte/dequeueByte garanteed to be linear in time on average amortized,
- worst case is linear to nubmer of queues.
+    assume sizeof(int) = 4
+    CHAR_BIT == 8
 
 
- Stucture of bit fields
- XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX
- [ data ] [   nxt    ][   prw    ]AB
+    Implemented as 2-linked list, each node takes 4 bytes, because of best alignment
 
- data    = 8 bit of unsigned char payload
- nxt = index of next node
- prw = index of prew node
- A = is_root flag
- B = is_emtpy flag
 
- Some conventions:
+Performance:
+
+    enqueueByte/dequeueByte/createQueue - garanteed to be constant time
+    destroyQueue is linear on elements in that queue
+    printQueue is linear on emlemenit in that queue
+
+
+Memory:
+
+    Only one buffer used:
+
+        [pfree|node|node|.....|node]
+
+    Stucture of bit fields;
+
+         XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX
+         [ data ] [   nxt    ][   prw    ]AB
+
+     data    = 8 bit of unsigned char payload
+     nxt = index of next node
+     prw = index of prew node
+     A = is_root flag
+     B = is_emtpy flag
+
+
+Some conventions:
 
       node types:
           root node - used as handle and also has data
@@ -37,14 +52,14 @@
 
  Allocation/Deallocation:
 
-          Standard free pointer increment for allocation and swap+decrement
-      for deallocation idiom used. Pointer prfee set to highest free place.
+            !!!!!!!!!!!!!!!!!!!REWRITE!!!!!!!!!!!!!!!!!!!!!!!!!
       Still, a twist exists - root node address are used as handles because of
       memory constrain. These should never be moved/swaped.
           When a node is allocated - prfee is advanced until it points to
       free node place. When a node is deallocated swap idiom is used:
           prfree decrements and if it points to normal node its swapped
           if it points to root node, prfree decrements until finds normal node or reaches node deallocated
+            !!!!!!!!!!!!!!!!!!!REWRITE!!!!!!!!!!!!!!!!!!!!!!!!!
 
  Dequeue:
       use handre as pointer to node, read root node.
@@ -82,16 +97,10 @@ typedef struct
 
 
 
-// Static buffer for data, and some aliases
+// Static buffer for data, non const to make dyramic setup with 
+// initQueues() call - can be satic and cons! no cheating!
 static unsigned char* buffer;
-static node_t* pstart;
-static node_t* pend;
 static int buffer_len;
-
-
-// Dynamic pointer
-static node_t* pfree;
-
 
 
 // Callbacks
@@ -137,13 +146,6 @@ static inline node_t* get_prw(node_t* node);
 static node_t* get_free_node();
 static void cleanup_node(node_t* node);
 
-// Updates node neibours
-static void update_chain(node_t* new_place);
-
-// Only non root nodes can be moved
-// Erases to and updates links in froms neibourgs
-static void move_node(node_t* node, node_t* new_place);
-
 // Short ciruts neibours to prepare node removing
 static void exclude_from_chain(node_t* node);
 
@@ -155,7 +157,12 @@ static void insert_after_root(node_t* root, node_t* newman);
 
 static inline int bounds_check(node_t* node)
 {
-    return (node != NULL) && (pstart <= node && node < pend);
+    // buffer_len may not be aligned by node_t size
+    int max_nodes = buffer_len / sizeof(node_t) ;
+    node_t* pstart = (node_t*) buffer;
+    node_t* pend   = pstart + max_nodes;
+
+    return (node != NULL) && (pstart < node && node < pend);
 }
 
 static inline int is_root(node_t* node)
@@ -192,7 +199,7 @@ static inline void set_empty_root_data(node_t* root, unsigned char data)
     assert(is_empty_root(root));
     assert(is_root(root));
 
-    short d = root - pstart;
+    short d = root - (node_t*)buffer;
 
     root->prw = d;
     root->nxt = d;
@@ -232,7 +239,10 @@ static inline void set_nxt(node_t* node, node_t* target)
     assert(bounds_check(node));
     assert(bounds_check(target));
 
-    node->nxt = target - pstart;
+    short d = target - (node_t*)buffer;
+    assert(d > 0);
+
+    node->nxt = d;
 }
 
 static inline void set_prw(node_t* node, node_t* target)
@@ -240,23 +250,28 @@ static inline void set_prw(node_t* node, node_t* target)
     assert(bounds_check(node));
     assert(bounds_check(target));
 
-    node->prw = target - pstart;
+    short d = target - (node_t*)buffer;
+    assert(d > 0);
+
+    node->prw = d;
 }
 
 static inline node_t* get_nxt(node_t* node)
 {
     assert(bounds_check(node));
     assert(!is_empty_root(node));
+    assert(node->nxt > 0);
 
-    return pstart + node->nxt;
+    return (node_t*)buffer + node->nxt;
 }
 
 static inline node_t* get_prw(node_t* node)
 {
     assert(bounds_check(node));
     assert(!is_empty_root(node));
+    assert(node->prw > 0);
 
-    return pstart + node->prw;
+    return (node_t*)buffer + node->prw;
 }
 
 
@@ -264,63 +279,41 @@ static inline node_t* get_prw(node_t* node)
 
 static node_t* get_free_node()
 {
-    if (pfree == pend) {
+
+    int* pfree = (int*)buffer; // first el is index of next free
+
+    assert(*pfree != 0);
+
+    int max_nodes = buffer_len / sizeof(node_t) - 1;
+    if (*pfree > max_nodes)
+    { 
         onOutOfMemory();
         return NULL;
     }
 
-    node_t* ret = pfree;
+    int* ret = pfree + *pfree;
+    if (*ret == 0)
+    {
+        *pfree += 1;
+    } else {
+        *pfree = *ret;
+        *ret = 0;
+    }
 
-    // Advance pointer, untill reaches free place
-    while (++pfree != pend && is_root(pfree));
-
-    return ret;
+    return (node_t*)ret;
 }
 
 static void cleanup_node(node_t* node)
 {
     assert(bounds_check(node));
-    assert(node != pfree); // we dont free free stuff
 
-    if (is_root(node) && node >= pfree)
-    {
-        assert(is_empty_root(node));
-        node->root = 0;
-        return;
-    }
+    int* pfree = (int*)buffer; // first el is index of next free
 
+    int* ret = (int*) node;
+    assert(ret != pfree); // we dont free free stuff
 
-    // scroll down pfree until it points to non root node or reaches us
-    while(--pfree != node && is_root(pfree));
-
-    if (pfree != node)
-        move_node(pfree, node);
-
-}
-
-static void update_chain(node_t* node)
-{
-
-    assert(bounds_check(node));
-    assert(!is_empty_root(node));
-
-    node_t* next = get_nxt(node);
-    node_t* prew = get_prw(node);
-
-    assert(get_nxt(prew) == get_prw(next));
-
-    set_nxt(prew, node);
-    set_prw(next, node);
-}
-
-static void move_node(node_t* from, node_t* to)
-{
-    assert(bounds_check(from));
-    assert(bounds_check(to));
-    assert(!is_root(from));
-
-    *to = *from;
-    update_chain(to);
+    *ret = *pfree;
+    *pfree = ret - pfree;
 }
 
 static void exclude_from_chain(node_t* node)
@@ -365,17 +358,14 @@ int initQueues(unsigned char* buf, int len)
     assert(buf != NULL);
     assert(len >= 4); // at least one node ;)
 
-
     buffer = buf;
     buffer_len = len;
 
-    int max_nodes = len / sizeof(node_t);
+    /* memset(buf, si */
+    int* pfree = (int*) buf;
+    *pfree = 1;
 
-    pstart = (node_t*) buf;
-    pend = pstart + max_nodes;
-    pfree = pstart;
-
-    return max_nodes;
+    return len / sizeof(node_t) - 1; // one is used for pfree index
 }
 
 
