@@ -39,12 +39,15 @@ void resetErrors()
 static void test_0(void **state)
 {
     (void) state; // unused
+    resetErrors();
 
     Q* q0 = createQueue();
+    assert_non_null(q0);
     enqueueByte(q0, 0);
     enqueueByte(q0, 1);
 
     Q* q1 = createQueue();
+    assert_non_null(q1);
     enqueueByte(q1, 3);
     enqueueByte(q0, 2);
     enqueueByte(q1, 4);
@@ -65,6 +68,9 @@ static void test_0(void **state)
     assert_int_equal(dequeueByte(q1), 6);
 
     destroyQueue(q1);
+
+    assert_int_equal(has_out_of_mem, 0);
+    assert_int_equal(has_illegal_op, 0);
 }
 
 
@@ -72,15 +78,45 @@ static void test_1(void **state)
 {
     (void) state; // unused
 
+    resetErrors();
+
     Q* q0 = createQueue();
+    assert_non_null(q0);
+
     for (int i = 0; i < 1000; i++) {
         enqueueByte(q0, 42);
     }
+
     dequeueByte(q0);
+    dequeueByte(q0);
+
     Q* q1 = createQueue();
     enqueueByte(q1, 42);
+    enqueueByte(q1, 255);
+    enqueueByte(q1, 0);
+
     destroyQueue(q0);
+
+    assert_int_equal(dequeueByte(q1), 42);
+    assert_int_equal(dequeueByte(q1), 255);
+    assert_int_equal(dequeueByte(q1), 0);
+
     destroyQueue(q1);
+
+    Q* q2 = createQueue();
+    for (int i = 0; i < 256; i++) {
+        enqueueByte(q2, i);
+    }
+
+    for (int i = 0; i < 256; i++) {
+        assert_int_equal(dequeueByte(q2), i);
+    }
+
+    destroyQueue(q2);
+
+    assert_int_equal(has_out_of_mem, 0);
+    assert_int_equal(has_illegal_op, 0);
+
 }
 
 
