@@ -6,7 +6,7 @@
 typedef int Q;
 
 // Sets buffer to work with and inits library, returs nubmer of elements max
-int initQueues(unsigned char* buffer, int len);
+int initQueues(unsigned char* buffer, unsigned int len);
 
 
 // Creates a FIFO byte queue, returning a handle to it.

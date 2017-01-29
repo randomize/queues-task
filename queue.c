@@ -371,10 +371,10 @@ static void insert_after_root(node_t* root, node_t* newman)
 // ========================================================================== //
 
 
-int initQueues(unsigned char* buf, int len)
+int initQueues(unsigned char* buf, unsigned int len)
 {
     assert(buf != NULL);
-    assert(len >= 4); // at least one node ;)
+    assert(len >= 2 * sizeof(node_t)); // at least one node ;)
 
     buffer = buf;
     buffer_len = len;
