@@ -184,7 +184,7 @@ static inline int is_empty_root(node_t* node);
 static inline int is_single_root(node_t* node);
 
 // adds data to empty root and wires it to itself
-static inline void make_single_root(node_t* root, unsigned char data)
+static inline void make_single_root(node_t* root, unsigned char data);
 
 // full node has both data A and data B
 static inline int is_full_node(node_t* node);
@@ -453,7 +453,7 @@ void destroyQueue(Q* q)
     free_node(root);
 }
 
-void enqueueBtte(Q* q, unsigned char b)
+void enqueueByte(Q* q, unsigned char b)
 {
     node_t* root = (node_t*)q;
     assert(bounds_check(root));
