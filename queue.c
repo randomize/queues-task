@@ -405,14 +405,18 @@ void destroyQueue(Q* q)
     node_t* root = (node_t*)q;
     assert(bounds_check(root));
 
-    if (is_single_root(root))
+    if (is_empty_root(root) || is_single_root(root))
     {
-        node_t* p = get_nxt(root);
-        while (p != root)
-        {
-            p = get_nxt(p);
-            free_node(p);
-        }
+        free_node(root);
+        return;
+    }
+
+    node_t* p = get_nxt(root);
+    while (p != root)
+    {
+        node_t* pp = get_nxt(p);
+        free_node(p);
+        p = pp;
     }
 
     // now root is en empty root
