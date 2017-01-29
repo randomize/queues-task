@@ -6,88 +6,118 @@
 #include <memory.h>
 
 /*
- 
-Preconditions:
+
+## Preconditions
 
     assume sizeof(int) == sizeof(node_t) == 4
     assume that CHAR_BIT == 8
     best alignment on target platform is 4
 
 
-    Queues are implemented as double-linked lists, each node
-    has payload of 1 byte and 2x9 bits for two indexes.
+    Queues are implemented as single-linked lists, each node
+    has payload of 2 byte and 9 bits for next index.
+    Root nodes have 1 byte of data and two indexes.
     Node takes 4 bytes, because of alignment so indexes have
     12 bits, in case buffer_len is bigger then 2048 (max 16384)
 
-    Only one int value at begigging of buffer is used by allocttor,
-    so maximum payload count is 511 (2048/4 - 1)
+    Only one int value at begigging of buffer is used by allocttor.
+    Maximum capacity varies between 958 for 64 queues (limit given by task)
+    and 1021 for single queue - because root queue node can only
+    take 1 byte of payload.
 
 
-Performance:
+## Performance
 
     enqueueByte/dequeueByte/createQueue - garanteed to be constant time
     destroyQueue is linear on elements in that queue
     printQueue is linear on emlemenit in that queue
 
 
-Memory:
+## Memory
 
-    Only one buffer used:
+    Only memory in buffer used, layout:
 
         [pfree|node|node|.....|node]
 
     Stucture of bit fields;
 
          XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX
-         [ data ] [    nxt    ][    prw    ]
+         [ data ] [    prw    ][    nxt    ]
 
-     data    = 8 bit of unsigned char payload
-     nxt = index of next node
-     prw = index of prew node
+     data = 8 bit  payload
+     prw  = 12 bit index of prew node (tail)
+     nxt  = 12 bit index of next node (head)
+
+         XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX
+         [ data ] [ datb ] 1111[    nxt    ]
+
+     data = 8 bit  payload data A
+     datb = 8 bit  payload data B
+     nxt  = 10 bit index of next node
+     1111 = 4 bit  pad, used to check if data B avail
+
+## Some conventions and naming
+
+    Node types:
+
+        root node   - used as handle returned to client,
+                      and also has payload, uses both
+                      nxt and prw indexes. data field
+                      represets "to be dequeued" element.
+
+        normal node - for data only, uses nxt and.
 
 
-Some conventions:
+    Root node states:
 
-      node types:
-          root node - used as handle and also has data
-          normal node - for data only
+        empty   - state when queue was just created nxt == NULL
+        single  - has payload, nxt == prw == this node
+        root    - has payload and more nodes in chain
 
-      root node states:
-          empty - state when queue was just created
-          data - node has payload, represents "current element"
 
- Allocation/Deallocation:
+    Normal node states:
 
-            !!!!!!!!!!!!!!!!!!!REWRITE!!!!!!!!!!!!!!!!!!!!!!!!!
-      Still, a twist exists - root node address are used as handles because of
-      memory constrain. These should never be moved/swaped.
-          When a node is allocated - prfee is advanced until it points to
-      free node place. When a node is deallocated swap idiom is used:
-          prfree decrements and if it points to normal node its swapped
-          if it points to root node, prfree decrements until finds normal node or reaches node deallocated
-            !!!!!!!!!!!!!!!!!!!REWRITE!!!!!!!!!!!!!!!!!!!!!!!!!
+        normal - only data A is avail
+        full   - both A and B payloads used
+
+## Allocation/Deallocation:
+
+    Generic node allocator with free node list implemented in free space
+used. pfree index always points to free region that will be returned by
+allocate_node() call. deallocate() stores previous pfree value in free
+memory region to recover pfree after next allocatiens. Both funcitons
+work in constant time. Allocater returns zeroed out node.
+
 
  Dequeue:
-      use handre as pointer to node, read root node.
-      If its empty - raise error
-      if its single el - pop it, set empty
-      if it has prew = copy data, copy prew to root, deallocate prew
+      use handle as pointer to node, read root node.
+      If its empty - raise error, return null;
+      if its single - set empty, return old data;
+      take next node;
+      if its full - return B, make it normal, copy B to root, return old root data;
+      if its normal - copy A to root. deallocate it, return old root data;
 
  Enquoue:
-      use handre as pointer to node, read root node.
-      if its empty - write val, set sign
+      use handle as pointer to node, read root node.
+      if its empty - set data, wire nxt and prw, return;
+      if its single - goto make new node
+      take prew node
+      if prew node is normal - add data B, swap B<->A, return;
+      make new node, set its data A and nxt to root
+      link new node: prew->nxt = new, root->prw = new
 
- DoubleLinked list semantic:
+
+list as FIFO semantic:
 
       Oueue:
-      1 2 3 ... N , where 1 is N is last come and 1 is first to out
+      1 2 3 ... N , where 1 is last come and N is first to out
 
-      List (arrow -> means "next" direction)
-      [root 1] -> [N] -> [N-1] -> ... [3] -> [2] ->  [2] -.
-         ^                                                |
-         '------------------------------------------------'
- */
+      [root N] --nxt-> [N-1] -> [N-2] -> ... [3] -> [2] -> [1] -.
+        |  ^                                                ^   |
+        |  '----------------------nxt-----------------------|---'
+        '-----------------prw-------------------------------'
 
+*/
 
 // ========================================================================== //
 
