@@ -246,8 +246,10 @@ static inline unsigned char extract_root_data(node_t* root)
     assert(bounds_check(root));
     assert(!is_empty_root(root));
 
-    root->nxt = 0;
-    return root->data;
+    unsigned char b = root->data;
+    int* p = (int*)root; *p = 0; // perf: only need to zero ->nxt, but its faster to wipe whole
+
+    return b;
 }
 
 static inline unsigned char copy_data_to_root(node_t* root, node_t* src)
@@ -433,7 +435,7 @@ void enqueueByte(Q* q, unsigned char b)
 
     if (!is_single_root(root))
     {
-        if (!is_full_node(prew)) 
+        if (!is_full_node(prew))
         {
             add_data_B(prew, b);
             swap_data_A_B(prew);
@@ -454,12 +456,6 @@ void enqueueByte(Q* q, unsigned char b)
 
 }
 
-/* use handle as pointer to node, read root node. */
-/* If its empty - raise error, return null; */
-/* if its single - set empty, return old data; */
-/* take next node; */
-/* if its full - return B, make it normal, copy B to root, return old root data; */
-/* if its normal - copy A to root. deallocate it, return old root data; */
 unsigned char dequeueByte(Q* q)
 {
     node_t* root = (node_t*)q;
@@ -486,6 +482,9 @@ unsigned char dequeueByte(Q* q)
 
     root->data = next->data;
     set_nxt(root, get_nxt(next));
+    if (get_prw(root) == next) // it was last node
+        set_prw(root, root);   // so make me single again
+
     free_node(next);
 
     return old;
