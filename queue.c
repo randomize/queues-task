@@ -133,8 +133,8 @@ static_assert(sizeof(int) == 4,    "Algorithm relies on 4 byte ints");
 static_assert(sizeof(node_t) == 4, "Algorithm relies on 4 byte nodes");
 
 
-// Static buffer for data, non const to make dyramic setup with 
-// initQueues() call - can be satic and cons! no cheating!
+// Static buffer for data - can be set from outside
+// with initQueues() call, and its len. No other data used.
 static unsigned char* buffer;
 static int buffer_len;
 
@@ -308,7 +308,7 @@ static node_t* alloc_node()
 
     int max_nodes = buffer_len / sizeof(node_t) - 1;
     if (*pfree > max_nodes)
-    { 
+    {
         onOutOfMemory();
         return NULL;
     }
