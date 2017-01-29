@@ -140,6 +140,8 @@ static_assert(sizeof(char) == 1,   "In case C standard broken by compiler");
 static unsigned char* buffer;
 static int buffer_len;
 
+/* unsigned int buffer_usage[2048]; */ // helper for memory map
+
 
 // Callbacks
 static onOutOfMem_cb_t onOutOfMemory;
@@ -359,12 +361,15 @@ static node_t* alloc_node()
         *ret = 0;
     }
 
+    /* buffer_usage[get_node_index((node_t*)ret)] = 1; */
+
     return (node_t*)ret;
 }
 
 static void free_node(node_t* node)
 {
     assert(bounds_check(node));
+    /* buffer_usage[get_node_index(node)] = 0; */
 
     int* pfree = (int*)buffer; // first el is index of next free
 
