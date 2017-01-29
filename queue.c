@@ -41,7 +41,7 @@
     Node takes 4 bytes, because of alignment so indexes have
     12 bits, in case buffer_len is bigger then 2048 (max 16384)
 
-    Only one int value at begigging of buffer is used by allocttor.
+    Only one int value at begging of buffer is used by allocator.
     Maximum capacity varies between 958 for 64 queues (limit given by task)
     and 1021 for single queue - because root queue node can only
     take 1 byte of payload.
@@ -49,9 +49,9 @@
 
 ## Performance
 
-    enqueueByte/dequeueByte/createQueue - garanteed to be constant time
-    destroyQueue is linear on elements in that queue
-    printQueue is linear on emlemenit in that queue
+    enqueueByte/dequeueByte/createQueue - guaranteed to be constant time
+    destroyQueue is linear on element count in that queue
+    printQueue is linear on element count in that queue
 
 
 ## Memory
@@ -60,7 +60,7 @@
 
         [pfree|node|node|.....|node]
 
-    Stucture of bit fields;
+    Structure of bit fields:
 
          XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX
          [ data ] [    prw    ][    nxt    ]
@@ -74,7 +74,7 @@
 
      data = 8 bit  payload data A
      datb = 8 bit  payload data B
-     nxt  = 10 bit index of next node
+     nxt  = 12 bit index of next node
      1111 = 4 bit  pad, used to check if data B avail
 
 ## Some conventions and naming
@@ -84,7 +84,7 @@
         root node   - used as handle returned to client,
                       and also has payload, uses both
                       nxt and prw indexes. data field
-                      represets "to be dequeued" element.
+                      represents "to be dequeued" element.
 
         normal node - for data only, uses nxt and.
 
@@ -106,8 +106,8 @@
     Generic node allocator with free node list implemented in free space
 used. pfree index always points to free region that will be returned by
 allocate_node() call. deallocate() stores previous pfree value in free
-memory region to recover pfree after next allocatiens. Both funcitons
-work in constant time. Allocater returns zeroed out node.
+memory region to recover pfree after next allocations. Both functions
+work in constant time. Allocator returns zeroed out node.
 
 
  Dequeue:
@@ -118,7 +118,7 @@ work in constant time. Allocater returns zeroed out node.
       if its full - return B, make it normal, copy B to root, return old root data;
       if its normal - copy A to root. deallocate it, return old root data;
 
- Enquoue:
+ Enqueue:
       use handle as pointer to node, read root node.
       if its empty - set data, wire nxt and prw, return;
       if its single - goto make new node
@@ -128,7 +128,7 @@ work in constant time. Allocater returns zeroed out node.
       link new node: prew->nxt = new, root->prw = new
 
 
-list as FIFO semantic:
+List as FIFO semantic:
 
       Oueue:
       1 2 3 ... N , where 1 is last come and N is first to out
