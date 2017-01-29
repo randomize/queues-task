@@ -73,7 +73,7 @@ static void test_1(void **state)
     (void) state; // unused
 
     Q* q0 = createQueue();
-    for (int i = 0; i < 511; i++) {
+    for (int i = 0; i < 1000; i++) {
         enqueueByte(q0, 42);
     }
     dequeueByte(q0);
@@ -117,7 +117,9 @@ static void test_3(void **state) // stress
     Q* full_q[511];
 
     for (int i = 0; i < 511; i++) {
-        full_q[i] = createQueue();
+        Q* q = createQueue();
+        assert_non_null(q);
+        full_q[i] = q;
     }
 
     for (int i = 0; i < 511; i++) {
@@ -178,6 +180,7 @@ static void test_4(void **state)
     }
 
     Q* out = createQueue();
+    (void)out;
     assert_int_equal(has_out_of_mem, 1);
 
     for (int i = 0; i < 511; i++) {
