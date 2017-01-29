@@ -129,6 +129,8 @@ typedef struct
     signed short  prw   : 12 ;
 } __attribute__((packed)) node_t;
 
+static_assert(sizeof(int) == 4,    "Algorithm relies on 4 byte ints");
+static_assert(sizeof(node_t) == 4, "Algorithm relies on 4 byte nodes");
 
 
 // Static buffer for data, non const to make dyramic setup with 
@@ -369,7 +371,6 @@ static void insert_after_root(node_t* root, node_t* newman)
 
 int initQueues(unsigned char* buf, int len)
 {
-    assert(sizeof(node_t) == 4); // make sure pad/packing work
     assert(buf != NULL);
     assert(len >= 4); // at least one node ;)
 
