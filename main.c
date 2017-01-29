@@ -22,7 +22,6 @@ void onOutOfMemory()
     has_out_of_mem = 1;
 }
 
-
 void onIllegalOperation()
 {
     /* printf("Illegal operation - exiting"); */
@@ -35,6 +34,7 @@ void resetErrors()
     has_out_of_mem = 0;
 }
 
+/////////////////////////////////////////////////////////////////////////////
 
 static void test_0(void **state)
 {
@@ -69,10 +69,52 @@ static void test_0(void **state)
 
     destroyQueue(q1);
 
+    Q* q3 = createQueue();
+    destroyQueue(q3);
+
+    q3 = createQueue();
+    enqueueByte(q3,0);
+    destroyQueue(q3);
+
+    q3 = createQueue();
+    enqueueByte(q3,0);
+    assert_int_equal(dequeueByte(q3), 0);
+    destroyQueue(q3);
+
+    q3 = createQueue();
+    enqueueByte(q3,0);
+    assert_int_equal(dequeueByte(q3), 0);
+    enqueueByte(q3,0);
+    destroyQueue(q3);
+
+    q3 = createQueue();
+    enqueueByte(q3,0);
+    assert_int_equal(dequeueByte(q3), 0);
+    enqueueByte(q3,0);
+    assert_int_equal(dequeueByte(q3), 0);
+    destroyQueue(q3);
+
+    q3 = createQueue();
+    enqueueByte(q3,0);
+    enqueueByte(q3,0xff);
+    assert_int_equal(dequeueByte(q3), 0);
+    assert_int_equal(dequeueByte(q3), 0xFF);
+    enqueueByte(q3,0);
+    assert_int_equal(dequeueByte(q3), 0);
+    destroyQueue(q3);
+
+    q3 = createQueue();
+    enqueueByte(q3,0);
+    enqueueByte(q3,0xff);
+    assert_int_equal(dequeueByte(q3), 0);
+    assert_int_equal(dequeueByte(q3), 0xFF);
+    enqueueByte(q3,0);
+    assert_int_equal(dequeueByte(q3), 0);
+    destroyQueue(q3);
+
     assert_int_equal(has_out_of_mem, 0);
     assert_int_equal(has_illegal_op, 0);
 }
-
 
 static void test_1(void **state)
 {
@@ -83,12 +125,12 @@ static void test_1(void **state)
     Q* q0 = createQueue();
     assert_non_null(q0);
 
-    for (int i = 0; i < 1000; i++) {
+    for (int i = 0; i < 1021; i++) {
         enqueueByte(q0, 42);
     }
 
-    dequeueByte(q0);
-    dequeueByte(q0);
+    for (int i = 0; i < 4; i++)
+        dequeueByte(q0);
 
     Q* q1 = createQueue();
     enqueueByte(q1, 42);
@@ -118,7 +160,6 @@ static void test_1(void **state)
     assert_int_equal(has_illegal_op, 0);
 
 }
-
 
 static void test_2(void **state)
 {
@@ -197,7 +238,6 @@ static void test_4(void **state)
 {
     (void) state; // unused
 
-    // illegol
     resetErrors();
 
     Q* q0 = createQueue();
@@ -227,6 +267,118 @@ static void test_4(void **state)
 
 }
 
+static void test_5(void **state) // random load
+{
+    (void) state; // unused
+
+#define LENN 512
+
+    unsigned char correct[LENN];
+    Q* qs[16];
+    int qs_l[16];
+
+    for (int t = 0; t < 100; t++)
+    {
+
+        resetErrors();
+
+        Q* in = createQueue();
+        Q* out = createQueue();
+        int in_l = 0;
+        int op_cnt = 0;
+
+        for (int i = 0; i < LENN; i++) {
+            unsigned char b = rand()%256;
+            correct[i] = b;
+            enqueueByte(in, b);
+            in_l++;
+        }
+
+
+        for (int i = 0; i < 16; i++) {
+            qs[i] = createQueue();
+            qs_l[i] = 0;
+        }
+
+        // random perturbatinos
+        while(1)
+        {
+            unsigned char from;
+            if (rand()%1000 == 0 && in_l > 0) {
+                from = dequeueByte(in);
+                assert_int_equal(has_illegal_op, 0);
+                in_l--;
+                op_cnt++;
+            } else {
+                int idx = rand()%16;
+                int cnt = 0;
+                while (qs_l[idx] == 0) {
+                    idx = (idx + 1) % 16;
+                    if (cnt++ > 16)
+                        break;
+                }
+                if (cnt > 16) {
+                    if (in_l > 0) {
+                        from = dequeueByte(in);
+                        in_l--;
+                        op_cnt++;
+                    }
+                    else
+                        break;
+                } else
+                {
+                    from = dequeueByte(qs[idx]);
+                    op_cnt++;
+                    assert_int_equal(has_illegal_op, 0);
+                    qs_l[idx]--;
+                }
+            }
+
+            if (rand()%1000 == 0) {
+                enqueueByte(out, from);
+                op_cnt++;
+            } else {
+                int idx = rand()%16;
+                enqueueByte(qs[idx], from);
+                qs_l[idx]++;
+                op_cnt++;
+            }
+
+        }
+
+        destroyQueue(in);
+
+        for (int i = 0; i < 16; i++) {
+            destroyQueue(qs[i]);
+        }
+
+        // check
+        for (int i = 0; i < LENN; i++) {
+            unsigned char b = dequeueByte(out);
+            assert_int_equal(has_illegal_op, 0);
+            for (int q = 0; q < LENN; q++) {
+                if (correct[q] == b)
+                    correct[q] = 0;
+            }
+        }
+        for (int i = 0; i < LENN; i++) {
+            assert_int_equal(correct[i], 0);
+        }
+        destroyQueue(out);
+
+        printf("> tested %d operatins\n", op_cnt);
+
+        assert_int_equal(has_out_of_mem, 0);
+        assert_int_equal(has_illegal_op, 0);
+
+    }
+
+    resetErrors();
+
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
 int main(void)
 {
     max_nodes = initQueues(buffer, BUFFER_LIMIT);
@@ -239,8 +391,9 @@ int main(void)
         cmocka_unit_test(test_2),
         cmocka_unit_test(test_3),
         cmocka_unit_test(test_0), // sanyty check after stress
-        cmocka_unit_test(test_4),
+        cmocka_unit_test(test_4), // limits stress
         cmocka_unit_test(test_0), // sanyty check after stress
+        cmocka_unit_test(test_5), // random stress
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
