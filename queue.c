@@ -175,9 +175,11 @@ static inline void set_prw(node_t* node, node_t* target);
 static inline node_t* get_nxt(node_t* node);
 static inline node_t* get_prw(node_t* node);
 
-// Allocition/deallocation
-static node_t* get_free_node();
-static void cleanup_node(node_t* node);
+// Allocates a node, returns it all zeroed
+static node_t* alloc_node();
+
+// Deallocates node, should not be used after free
+static void free_node(node_t* node);
 
 // Short ciruts neibours to prepare node removing
 static void exclude_from_chain(node_t* node);
@@ -297,7 +299,7 @@ static inline node_t* get_prw(node_t* node)
 
 // ========================================================================== //
 
-static node_t* get_free_node()
+static node_t* alloc_node()
 {
 
     int* pfree = (int*)buffer; // first el is index of next free
@@ -323,7 +325,7 @@ static node_t* get_free_node()
     return (node_t*)ret;
 }
 
-static void cleanup_node(node_t* node)
+static void free_node(node_t* node)
 {
     assert(bounds_check(node));
 
@@ -388,7 +390,7 @@ int initQueues(unsigned char* buf, int len)
 Q* createQueue()
 {
     // create new empty root node and return it as handle
-    node_t* root = get_free_node();
+    node_t* root = alloc_node();
 
     if (root == NULL)
         return NULL;
@@ -412,7 +414,7 @@ void destroyQueue(Q* q)
         dequeueByte(q);
 
     // now root is en empty root
-    cleanup_node(root);
+    free_node(root);
 }
 
 void enqueueByte(Q* q, unsigned char b)
@@ -431,7 +433,7 @@ void enqueueByte(Q* q, unsigned char b)
         return;
     }
 
-    node_t* newman = get_free_node();
+    node_t* newman = alloc_node();
     if (newman == NULL)
         return;
 
@@ -458,7 +460,7 @@ unsigned char dequeueByte(Q* q)
 
     unsigned char data = copy_data_to_root(root, prew);
     exclude_from_chain(prew);
-    cleanup_node(prew);
+    free_node(prew);
 
     return data;
 }
