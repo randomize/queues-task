@@ -21,6 +21,7 @@
 
 
 #include "queue.h"
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -172,22 +173,22 @@ static onIllegalOperation_cb_t onIllegalOperation;
 // ========================================================================== //
 
 // helper, returns true if pointer is withit [buffer, buffer + MA
-static inline int bounds_check(node_t* node);
+static inline bool bounds_check(node_t* node);
 
 // get node's index to be used as nxt / prw
 static inline int get_node_index(node_t* node);
 
 // empty root has no data
-static inline int is_empty_root(node_t* node);
+static inline bool is_empty_root(node_t* node);
 
 // single root points to itself and is not empty
-static inline int is_single_root(node_t* node);
+static inline bool is_single_root(node_t* node);
 
 // adds data to empty root and wires it to itself
 static inline void make_single_root(node_t* root, unsigned char data);
 
 // full node has both data A and data B
-static inline int is_full_node(node_t* node);
+static inline bool is_full_node(node_t* node);
 
 // get roots data, root becomes empty
 static inline unsigned char extract_root_data(node_t* root);
@@ -220,7 +221,7 @@ static void free_node(node_t* node);
 // ========================================================================== //
 
 
-static inline int bounds_check(node_t* node)
+static inline bool bounds_check(node_t* node)
 {
     // buffer_len may not be aligned by node_t size
     int max_nodes = buffer_len / sizeof(node_t) ;
@@ -238,13 +239,13 @@ static inline int get_node_index(node_t* node)
     return d;
 }
 
-static inline int is_empty_root(node_t* node)
+static inline bool is_empty_root(node_t* node)
 {
     assert(bounds_check(node));
     return node->nxt == 0 ;
 }
 
-static inline int is_single_root(node_t* node)
+static inline bool is_single_root(node_t* node)
 {
     assert(bounds_check(node));
     return !is_empty_root(node) && node->nxt == get_node_index(node);
@@ -262,7 +263,7 @@ static inline void make_single_root(node_t* root, unsigned char data)
     root->data = data;
 }
 
-static inline int is_full_node(node_t* node)
+static inline bool is_full_node(node_t* node)
 {
     assert(bounds_check(node));
     assert(!is_empty_root(node));
