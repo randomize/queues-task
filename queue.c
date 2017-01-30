@@ -33,19 +33,19 @@
 
     assume sizeof(int) == sizeof(node_t) == 4
     assume that CHAR_BIT == 8
-    best alignment on target platform is 4
+    assume that best alignment on target platform is 4
 
 
-    Queues are implemented as single-linked lists, each node
-    has payload of 2 byte and 9 bits for next index.
-    Root nodes have 1 byte of data and two indexes.
-    Node takes 4 bytes, because of alignment so indexes have
-    12 bits, in case buffer_len is bigger then 2048 (max 16384)
+    Queues are implemented as single-linked lists, each node has a
+    payload of 2 bytes and 12 (can be 9 for 2048 case) bits for next node index.
+    Root nodes have 1 byte payload and two indexes: head and tail.
+    Any node takes 4 bytes, because of alignment. In this case indexes have
+    12 bits, so we can address buffer with length more then 2048 (max 16384).
 
-    Only one int value at begging of buffer is used by allocator.
+    Additionally, one int value at begging of buffer is used by allocator.
     Maximum capacity varies between 958 for 64 queues (limit given by task)
-    and 1021 for single queue - because root queue node can only
-    take 1 byte of payload.
+    and 1021 for single queue - it depends on number of queues because
+    root queue node can only take 1 byte of payload.
 
 
 ## Performance
@@ -61,7 +61,9 @@
 
         [pfree|node|node|.....|node]
 
-    Structure of bit fields:
+    Structure of node bit fields:
+
+    Root node:
 
          XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX
          [ data ] [    prw    ][    nxt    ]
@@ -70,13 +72,16 @@
      prw  = 12 bit index of prew node (tail)
      nxt  = 12 bit index of next node (head)
 
+    Normal node:
+
          XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX
-         [ data ] [ datb ] 1111[    nxt    ]
+         [ data ] [ datb ] [pd][    nxt    ]
 
      data = 8 bit  payload data A
      datb = 8 bit  payload data B
      nxt  = 12 bit index of next node
-     1111 = 4 bit  pad, used to check if data B avail
+     pd   = 4 bit  pad, used to check if data B is avail
+
 
 ## Some conventions and naming
 
@@ -84,49 +89,50 @@
 
         root node   - used as handle returned to client,
                       and also has payload, uses both
-                      nxt and prw indexes. data field
-                      represents "to be dequeued" element.
+                      nxt and prw indexes for head and tail.
+                      data field represents "to be dequeued" element.
 
-        normal node - for data only, uses nxt and.
+        normal node - for data only, uses nxt and 2 data felds
 
 
     Root node states:
 
         empty   - state when queue was just created nxt == NULL
-        single  - has payload, nxt == prw == this node
-        root    - has payload and more nodes in chain
+        single  - has payload, nxt == prw == this node, queue has size 1
+        root    - has payload and there are more nodes in chain, queue size >1
 
 
     Normal node states:
 
-        normal - only data A is avail
-        full   - both A and B payloads used
+        normal - only data A is filled, not added yet, pd == NULL
+        full   - both A and B filled, pd != NULL
 
 ## Allocation/Deallocation:
 
-    Generic node allocator with free node list implemented in free space
+    Generic node allocator with free nodes list implemented in free storage
 used. pfree index always points to free region that will be returned by
 allocate_node() call. deallocate() stores previous pfree value in free
-memory region to recover pfree after next allocations. Both functions
-work in constant time. Allocator returns zeroed out node.
+memory region to recover pfree after subsequent allocations/deallocations.
+Both functions work in constant time. Allocator returns zeroed out node.
 
+
+ Enqueue:
+      use Q handle as pointer to node, read root node.
+      if its empty - set data, wire nxt and prw to self, return;
+      if its single - goto make new node
+      take prew node
+      if prew node is normal - add data B, swap B<->A, return;
+      make new node, set its data A and nxt to root
+      link new node: prew->nxt = new, root->prw = new
 
  Dequeue:
-      use handle as pointer to node, read root node.
+      use Q handle as pointer to node, read root node.
       If its empty - raise error, return null;
       if its single - set empty, return old data;
       take next node;
       if its full - return B, make it normal, copy B to root, return old root data;
       if its normal - copy A to root. deallocate it, return old root data;
 
- Enqueue:
-      use handle as pointer to node, read root node.
-      if its empty - set data, wire nxt and prw, return;
-      if its single - goto make new node
-      take prew node
-      if prew node is normal - add data B, swap B<->A, return;
-      make new node, set its data A and nxt to root
-      link new node: prew->nxt = new, root->prw = new
 
 
 List as FIFO semantic:
