@@ -1,6 +1,7 @@
 
 
-#include "queue.h"
+#include "queue2.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
