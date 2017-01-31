@@ -276,6 +276,7 @@ static void test_5(void **state) // random load
     unsigned char correct[LENN];
     Q* qs[16];
     int qs_l[16];
+    int op_cnt = 0;
 
     for (int t = 0; t < 100; t++)
     {
@@ -285,7 +286,6 @@ static void test_5(void **state) // random load
         Q* in = createQueue();
         Q* out = createQueue();
         int in_l = 0;
-        int op_cnt = 0;
 
         for (int i = 0; i < LENN; i++) {
             unsigned char b = rand()%256;
@@ -366,7 +366,6 @@ static void test_5(void **state) // random load
         }
         destroyQueue(out);
 
-        printf("> tested %d operatins\n", op_cnt);
 
         assert_int_equal(has_out_of_mem, 0);
         assert_int_equal(has_illegal_op, 0);
@@ -375,12 +374,14 @@ static void test_5(void **state) // random load
 
     resetErrors();
 
+    printf("> tested %d operatins\n", op_cnt);
 }
 
 /////////////////////////////////////////////////////////////////////////////
 
 int main(void)
 {
+    srand(0);
     max_nodes = initQueues(buffer, BUFFER_LIMIT);
     setIllegalOperationCallback(onIllegalOperation);
     setOutOfMemoryCallback(onOutOfMemory);
