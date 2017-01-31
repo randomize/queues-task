@@ -77,7 +77,7 @@
 
     Root node:
 
-         XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX 
+         XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX
          [ data ] [ data ] [ data ] [ data ] [ data ] [ head ] [ tail ] [ cntr ]
 
      data = 8x5 bit  payload
@@ -89,7 +89,7 @@
 
     Normal node:
 
-         XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX 
+         XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX
          [ data ] [ data ] [ data ] [ data ] [ data ] [ data ] [ data ] [ next ]
 
      data = 8x7 bit  payload data
@@ -97,7 +97,7 @@
 
     Tail node:
 
-         XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX 
+         XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX
          [ data ] [ data ] [ data ] [ data ] [ data ] [ data ] [ data ] [ data ]
 
      data = 8x8 bit  payload data
@@ -162,7 +162,7 @@ List as FIFO semantic:
 
       [root N] --head-> [N-1] -> [N-2] -> ... [3] -> [2] -> [1]
         |                                                   ^
-        |                                                   |    
+        |                                                   |
         `----tail-------------------------------------------′
 
 */
@@ -173,7 +173,7 @@ List as FIFO semantic:
 // 32 bit bit filed node struct to access data and indexes
 typedef union
 {
-    struct 
+    struct
     {
         unsigned char  data[7] ;
         unsigned char  next;
@@ -240,30 +240,9 @@ static inline node_t* get_root_head(node_t* root);
 static inline node_t* get_root_tail(node_t* root);
 
 
+
 // get node's next node
 static inline node_t* get_node_next(node_t* node);
-
-
-// adds data to empty root and wires it to itself
-static inline void make_single_root(node_t* root, unsigned char data);
-
-// full node has both data A and data B
-static inline bool is_full_node(node_t* node);
-
-// get roots data, root becomes empty
-static inline unsigned char extract_root_data(node_t* root);
-
-// copy data in prew node
-static inline unsigned char copy_data_to_root(node_t* root, node_t* src);
-
-// sets data B for node, make node full
-static inline void add_data_B(node_t* node, unsigned char b);
-
-// gets data B, makes node normal
-static inline unsigned char remove_data_B(node_t* node);
-
-// swaps A and B in full node
-static inline void swap_data_A_B(node_t* node);
 
 
 
@@ -275,6 +254,9 @@ static void free_node(node_t* node);
 
 
 // ========================================================================== //
+
+
+// Core functions
 
 static inline node_t* get_queue_root(Q* q)
 {
@@ -300,7 +282,7 @@ static inline node_t* index_to_node(unsigned char index)
 }
 
 
-// Root nodes related
+// Root nodes related fuctions
 
 static inline bool is_empty_root(node_t* root)
 {
@@ -330,6 +312,7 @@ static inline node_t* get_root_tail(node_t* root)
     assert(bounds_check(root));
     assert(!is_empty_root(root));
     assert(!is_single_root(root));
+
     node_t* t = index_to_node(root->as_root.tail);
     assert(t != root);
     return t;
@@ -340,85 +323,9 @@ static inline node_t* get_root_tail(node_t* root)
 static inline node_t* get_node_next(node_t* node)
 {
     assert(bounds_check(node));
-    return  index_to_node(node->as_node.index);
+    return  index_to_node(node->as_node.next);
 }
 
-static inline void make_single_root(node_t* root, unsigned char data)
-{
-    assert(bounds_check(root));
-    assert(is_empty_root(root));
-
-    short d = get_node_index(root);
-
-    root->prw = d;
-    root->nxt = d;
-    root->data = data;
-}
-
-static inline bool is_full_node(node_t* node)
-{
-    assert(bounds_check(node));
-    assert(!is_empty_root(node));
-    return node->prw != 0;
-}
-
-static inline unsigned char extract_root_data(node_t* root)
-{
-    assert(bounds_check(root));
-    assert(!is_empty_root(root));
-
-    unsigned char b = root->data;
-    int* p = (int*)root; *p = 0; // perf: only need to zero ->nxt, but its faster to wipe whole
-
-    return b;
-}
-
-static inline unsigned char copy_data_to_root(node_t* root, node_t* src)
-{
-    assert(bounds_check(root));
-    assert(bounds_check(src));
-    assert(src != root);
-    assert(!is_empty_root(root));
-
-    unsigned char data = root->data;
-    root->data = src->data;
-
-    return data;
-}
-
-static inline void add_data_B(node_t* node, unsigned char b)
-{
-    assert(bounds_check(node));
-    assert(!is_empty_root(node));
-    assert(!is_full_node(node));
-
-    unsigned short data = b;
-    data |= 0xFF00;
-    node->prw = data;
-}
-
-static inline unsigned char remove_data_B(node_t* node)
-{
-    assert(bounds_check(node));
-    assert(!is_empty_root(node));
-    assert(is_full_node(node));
-
-    unsigned short b = node->prw;
-    node->prw = 0;
-    return b;
-}
-
-static inline void swap_data_A_B(node_t* node)
-{
-    assert(bounds_check(node));
-    assert(!is_empty_root(node));
-    assert(is_full_node(node));
-
-    unsigned short data = node->data;
-    data |= 0xFF00;
-    node->data = node->prw;
-    node->prw = data;
-}
 
 
 // ========================================================================== //
@@ -434,13 +341,13 @@ static node_t* alloc_node()
         return NULL;
     }
 
-    node_t* ret = buffer + buffer->as_pfree;
+    node_t* ret = index_to_node(buffer->as_pfree);
 
     if (ret->as_pfree == 0)
     {
         buffer->as_pfree += 1;
-    } 
-    else 
+    }
+    else
     {
         buffer->as_pfree = ret->as_pfree;
         ret->as_pfree = 0;
@@ -454,7 +361,7 @@ static void free_node(node_t* node)
     assert(bounds_check(node));
 
     node->as_pfree = buffer->as_pfree;
-    buffer->as_pfree = get_node_index(node);
+    buffer->as_pfree = node_to_index(node);
 }
 
 // ========================================================================== //
@@ -490,16 +397,24 @@ void destroyQueue(Q* q)
         return;
     }
 
+    node_t* t = get_root_tail(root);
     node_t* p = get_root_head(root);
-    while (p != root)
+
+    if (t == p)
     {
-        node_t* pp = get_nxt(p);
+        free_node(t);
+        free_node(root);
+        return;
+    }
+
+    while (p != t)
+    {
+        node_t* pp = get_node_next(p);
         free_node(p);
         p = pp;
     }
 
-    // now root is en empty root
-    free_node(root);
+    free_node(t);
 }
 
 void enqueueByte(Q* q, unsigned char b)
