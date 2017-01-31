@@ -26,6 +26,8 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <memory.h>
+#include <limits.h>
+#include <stddef.h>
 
 /*
 
@@ -35,8 +37,8 @@
     assume that CHAR_BIT == 8
     assume that best alignment on target platform is 4
 
-## Base ideas
 
+## Base ideas
 
     Queues are implemented as single-linked lists, each node is 8 bytes;
     Buffer of size 2048 allows to allocate 256 nodes
@@ -51,9 +53,11 @@
     used to check how many payload slots used in head, in tail and
     in root itself;
 
-    Size depends on case, couple examples:
-       Worst: created 63 empty queues and one full - 1343 (255 - 
-       if we have 64 nodes all full - 1721
+    Capacity depends on case, couple examples:
+
+      (worst) created 63 empty queues and one full - 1343 = (255 - 64 - 1)*7 + 8 + 5
+              created 64 all equally full          - 1721 = (255 - 64 - 64)*7 + 64*8 + 64*5
+              created 1 full queue                 - 1784
 
 
 ## Performance
@@ -79,15 +83,17 @@
      data = 8x5 bit  payload
      head = 8  bit index of head of queue
      tail = 8  bit index of tail of queue
-     cntr = 8  bit: 3 - head, 3 - tail, number of payload slots used
+     cntr = 8  bit counters - interpreted differently:
+        if head == NULL - 8 bits is number of used payload slots in root
+        if head != NULL - 4 bits - head, 4 bits - tail - nr of slots used in them
 
     Normal node:
 
          XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX XXXXXXXX 
-         [ data ] [ data ] [ data ] [ data ] [ data ] [ data ] [ data ] [ data ]
+         [ data ] [ data ] [ data ] [ data ] [ data ] [ data ] [ data ] [ next ]
 
      data = 8x7 bit  payload data
-     indx = 8   bit  index of next node
+     next = 8   bit  index of next node
 
     Tail node:
 
@@ -103,24 +109,23 @@
 
         root node   - used as handle returned to client,
                       and also has payload, stores
-                      indexes for head and tail.
-                      data field represents "to be dequeued" element.
+                      indexes for head and tail and countres.
+                      1st data field represents "to be dequeued" element.
 
-        normal node - for data only, has 3 payload byte fields and 
-                      meta info about owner queue an
+        normal node - for data only, has 7 payload byte fields
+                      and index for next element
 
 
     Root node states:
 
-        empty   - state when queue was just created nxt == NULL
-        single  - has payload, nxt == prw == this node, queue has size 1
-        root    - has payload and there are more nodes in chain, queue size >1
-
+        empty   - state when queue was just created head == tail == NULL, cntr == 0
+        single  - has some payload, head == head == NULL, cntr != 0
+        full    - has full payload, head != NULL uses head and tail counters
 
     Normal node states:
 
-        normal - only data A is filled, not added yet, pd == NULL
-        full   - both A and B filled, pd != NULL
+        normal - not all payload slots filled yet
+        full   - all slots used
 
 ## Allocation/Deallocation:
 
@@ -133,7 +138,7 @@ Both functions work in constant time. Allocator returns zeroed out node.
 
  Enqueue:
       use Q handle as pointer to node, read root node.
-      if its empty - set data, wire nxt and prw to self, return;
+      if its not full - set data, wire nxt and prw to self, return;
       if its single - goto make new node
       take prew node
       if prew node is normal - add data B, swap B<->A, return;
@@ -155,35 +160,50 @@ List as FIFO semantic:
       Oueue:
       1 2 3 ... N , where 1 is last come and N is first to out
 
-      [root N] --nxt-> [N-1] -> [N-2] -> ... [3] -> [2] -> [1] -.
-        |  ^                                                ^   |
-        |  '----------------------nxt-----------------------|---'
-        '-----------------prw-------------------------------'
+      [root N] --head-> [N-1] -> [N-2] -> ... [3] -> [2] -> [1]
+        |                                                   ^
+        |                                                   |    
+        `----tail-------------------------------------------′
 
 */
 
 // ========================================================================== //
 
+
 // 32 bit bit filed node struct to access data and indexes
-typedef struct
+typedef union
 {
-    unsigned char   data  : 8  ;
-    unsigned short  nxt   : 12 ;
-    unsigned short  prw   : 12 ;
+    struct 
+    {
+        unsigned char  data[7] ;
+        unsigned char  next;
+    } as_node;
+    struct
+    {
+        unsigned char  data[8] ;
+    } as_tail;
+    struct
+    {
+        unsigned char  data[5] ;
+        unsigned char  head;
+        unsigned char  tail;
+        unsigned char  cnth : 4 ;
+        unsigned char  cntt : 4 ;
+    } as_root;
+    unsigned long int as_pfree;
 } __attribute__((packed)) node_t;
 
-static_assert(sizeof(int) == 4,    "Algorithm relies on 4 byte ints");
-static_assert(sizeof(node_t) == 4, "Algorithm relies on 4 byte nodes");
-static_assert(sizeof(char) == 1,   "In case C standard broken by compiler");
-/* static_assert(CHAR_BIT == 8,   "In case platform is weird"); */
+static_assert(sizeof(unsigned long int) == 8, "Algorithm relies on 4 byte ints");
+static_assert(sizeof(node_t) == 8,            "Algorithm relies on 4 byte nodes");
+static_assert(sizeof(char) == 1,              "In case C standard violated by compiler");
+static_assert(CHAR_BIT == 8,                  "In case platform is weird");
 
+#define NODE_COUNT 256
 
 // Static buffer for data - can be set from outside
 // with initQueues() call, and its len. No other data used.
-static unsigned char* buffer;
-static int buffer_len;
-
-/* unsigned int buffer_usage[2048]; */ // helper for memory map
+static node_t* buffer;
+static int     buffer_len;
 
 
 // Callbacks
@@ -196,14 +216,33 @@ static onIllegalOperation_cb_t onIllegalOperation;
 // helper, returns true if pointer is withit [buffer, buffer + MA
 static inline bool bounds_check(node_t* node);
 
-// get node's index to be used as nxt / prw
-static inline int get_node_index(node_t* node);
+// Get queue root
+static inline node_t* get_queue_root(Q* q);
 
-// empty root has no data
-static inline bool is_empty_root(node_t* node);
+// get node's index
+static inline unsigned char node_to_index(node_t* node);
 
-// single root points to itself and is not empty
-static inline bool is_single_root(node_t* node);
+// get node by index
+static inline node_t* index_to_node(unsigned char index);
+
+
+
+// empty root has no data and empty head
+static inline bool is_empty_root(node_t* root);
+
+// single root has data (cntt bytes), but has empty head
+static inline bool is_single_root(node_t* root);
+
+// gets head node of root
+static inline node_t* get_root_head(node_t* root);
+
+// gets tail node of root
+static inline node_t* get_root_tail(node_t* root);
+
+
+// get node's next node
+static inline node_t* get_node_next(node_t* node);
+
 
 // adds data to empty root and wires it to itself
 static inline void make_single_root(node_t* root, unsigned char data);
@@ -226,11 +265,7 @@ static inline unsigned char remove_data_B(node_t* node);
 // swaps A and B in full node
 static inline void swap_data_A_B(node_t* node);
 
-// helpers to get/set to write sign indexes
-static inline void set_nxt(node_t* node, node_t* target);
-static inline void set_prw(node_t* node, node_t* target);
-static inline node_t* get_nxt(node_t* node);
-static inline node_t* get_prw(node_t* node);
+
 
 // Allocates a node, returns it all zeroed
 static node_t* alloc_node();
@@ -241,35 +276,71 @@ static void free_node(node_t* node);
 
 // ========================================================================== //
 
+static inline node_t* get_queue_root(Q* q)
+{
+    node_t* root = (node_t*)q;
+    assert(bounds_check(root));
+    return root;
+}
 
 static inline bool bounds_check(node_t* node)
 {
-    // buffer_len may not be aligned by node_t size
-    int max_nodes = buffer_len / sizeof(node_t) ;
-    node_t* pstart = (node_t*) buffer;
-    node_t* pend   = pstart + max_nodes;
-
-    return (node != NULL) && (pstart < node && node < pend);
+    return (node != NULL) && (buffer < node && node < buffer + NODE_COUNT);
 }
 
-static inline int get_node_index(node_t* node)
+static inline unsigned char node_to_index(node_t* node)
 {
     assert(bounds_check(node));
-    int d =  node - (node_t*)buffer;
-    assert(d > 0);
-    return d;
+    return node - buffer;
 }
 
-static inline bool is_empty_root(node_t* node)
+static inline node_t* index_to_node(unsigned char index)
 {
-    assert(bounds_check(node));
-    return node->nxt == 0 ;
+    return buffer + index;
 }
 
-static inline bool is_single_root(node_t* node)
+
+// Root nodes related
+
+static inline bool is_empty_root(node_t* root)
+{
+    assert(bounds_check(root));
+    return root->as_root.head == 0 && root->as_root.cntt == 0;
+}
+
+static inline bool is_single_root(node_t* root)
+{
+    assert(bounds_check(root));
+    return root->as_root.head == 0 && root->as_root.cntt != 0;
+}
+
+static inline node_t* get_root_head(node_t* root)
+{
+    assert(bounds_check(root));
+    assert(!is_empty_root(root));
+    assert(!is_single_root(root));
+
+    node_t* h = index_to_node(root->as_root.head);
+    assert(h != root);
+    return h;
+}
+
+static inline node_t* get_root_tail(node_t* root)
+{
+    assert(bounds_check(root));
+    assert(!is_empty_root(root));
+    assert(!is_single_root(root));
+    node_t* t = index_to_node(root->as_root.tail);
+    assert(t != root);
+    return t;
+}
+
+// Simple node related
+
+static inline node_t* get_node_next(node_t* node)
 {
     assert(bounds_check(node));
-    return !is_empty_root(node) && node->nxt == get_node_index(node);
+    return  index_to_node(node->as_node.index);
 }
 
 static inline void make_single_root(node_t* root, unsigned char data)
@@ -349,83 +420,41 @@ static inline void swap_data_A_B(node_t* node)
     node->prw = data;
 }
 
-static inline void set_nxt(node_t* node, node_t* target)
-{
-    assert(bounds_check(node));
-    assert(bounds_check(target));
-
-    node->nxt = get_node_index(target);
-}
-
-static inline void set_prw(node_t* node, node_t* target)
-{
-    assert(bounds_check(node));
-    assert(bounds_check(target));
-
-    node->prw = get_node_index(target);
-}
-
-static inline node_t* get_nxt(node_t* node)
-{
-    assert(bounds_check(node));
-    assert(!is_empty_root(node));
-    assert(node->nxt > 0);
-
-    return (node_t*)buffer + node->nxt;
-}
-
-static inline node_t* get_prw(node_t* node)
-{
-    assert(bounds_check(node));
-    assert(!is_empty_root(node));
-    assert(node->prw > 0);
-
-    return (node_t*)buffer + node->prw;
-}
-
 
 // ========================================================================== //
 
 static node_t* alloc_node()
 {
 
-    int* pfree = (int*)buffer; // first el is index of next free
+    assert(buffer->as_pfree != 0);
 
-    assert(*pfree != 0);
-
-    int max_nodes = buffer_len / sizeof(node_t) - 1;
-    if (*pfree > max_nodes)
+    if (buffer->as_pfree >= NODE_COUNT)
     {
         onOutOfMemory();
         return NULL;
     }
 
-    int* ret = pfree + *pfree;
-    if (*ret == 0)
+    node_t* ret = buffer + buffer->as_pfree;
+
+    if (ret->as_pfree == 0)
     {
-        *pfree += 1;
-    } else {
-        *pfree = *ret;
-        *ret = 0;
+        buffer->as_pfree += 1;
+    } 
+    else 
+    {
+        buffer->as_pfree = ret->as_pfree;
+        ret->as_pfree = 0;
     }
 
-    /* buffer_usage[get_node_index((node_t*)ret)] = 1; */
-
-    return (node_t*)ret;
+    return ret;
 }
 
 static void free_node(node_t* node)
 {
     assert(bounds_check(node));
-    /* buffer_usage[get_node_index(node)] = 0; */
 
-    int* pfree = (int*)buffer; // first el is index of next free
-
-    int* ret = (int*) node;
-    assert(ret != pfree); // we dont free free stuff
-
-    *ret = *pfree;
-    *pfree = ret - pfree;
+    node->as_pfree = buffer->as_pfree;
+    buffer->as_pfree = get_node_index(node);
 }
 
 // ========================================================================== //
@@ -434,16 +463,15 @@ static void free_node(node_t* node)
 int initQueues(unsigned char* buf, unsigned int len)
 {
     assert(buf != NULL);
-    assert(len >= 2 * sizeof(node_t)); // at least one node ;)
-
-    buffer = buf;
-    buffer_len = len;
+    assert(len == 2048);
 
     memset(buf, 0, len);
-    int* pfree = (int*) buf;
-    *pfree = 1;
 
-    return len / sizeof(node_t) - 1; // one is used for pfree index
+    buffer = (node_t*) buf;
+    buffer_len = len;
+    buffer->as_pfree = 1;
+
+    return 1343; // return worst case magic constant
 }
 
 Q* createQueue()
@@ -454,8 +482,7 @@ Q* createQueue()
 
 void destroyQueue(Q* q)
 {
-    node_t* root = (node_t*)q;
-    assert(bounds_check(root));
+    node_t* root = get_queue_root(q);
 
     if (is_empty_root(root) || is_single_root(root))
     {
@@ -463,7 +490,7 @@ void destroyQueue(Q* q)
         return;
     }
 
-    node_t* p = get_nxt(root);
+    node_t* p = get_root_head(root);
     while (p != root)
     {
         node_t* pp = get_nxt(p);
@@ -477,8 +504,7 @@ void destroyQueue(Q* q)
 
 void enqueueByte(Q* q, unsigned char b)
 {
-    node_t* root = (node_t*)q;
-    assert(bounds_check(root));
+    node_t* root = get_queue_root(q);
 
     if (is_empty_root(root))
     {
