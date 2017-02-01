@@ -1,6 +1,6 @@
 
 CC=gcc
-CFLAGS=-c -Wall -I. -Wall -Wextra -Wpedantic -std=c11 -ggdb -O0
+CFLAGS=-c -Wall -I. -Wall -Wextra -Wpedantic -std=c11 -g0 -O3
 LDFLAGS=-lcmocka
 SOURCES=main.c queue2.c
 OBJECTS=$(SOURCES:.c=.o)
