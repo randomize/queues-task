@@ -126,6 +126,16 @@ static void test_1(void **state)
     Q* q0 = createQueue();
     assert_non_null(q0);
 
+    for (int j = 0; j < 1200; j++) {
+        /* printf("> %d\n", j); */
+        for (int i = 0; i < j; i++) {
+            enqueueByte(q0, i%256);
+        }
+        for (int i = 0; i < j; i++) {
+            assert_int_equal(dequeueByte(q0), i%256);
+        }
+    }
+
     for (int i = 0; i < 1021; i++) {
         enqueueByte(q0, 42);
     }
@@ -192,43 +202,45 @@ static void test_3(void **state) // stress
 {
     (void) state; // unused
 
-    Q* full_q[511];
+    const int MAX_Q = 254;
 
-    for (int i = 0; i < 511; i++) {
+    Q* full_q[MAX_Q];
+
+    for (int i = 0; i < MAX_Q; i++) {
         Q* q = createQueue();
         assert_non_null(q);
         full_q[i] = q;
     }
 
-    for (int i = 0; i < 511; i++) {
+    for (int i = 0; i < MAX_Q; i++) {
         destroyQueue(full_q[i]);
     }
 
-    for (int i = 0; i < 511; i++) {
+    for (int i = 0; i < MAX_Q; i++) {
         full_q[i] = createQueue();
     }
 
-    for (int i = 0; i < 511; i++) {
+    for (int i = 0; i < MAX_Q; i++) {
         enqueueByte(full_q[i], i);
     }
 
-    for (int i = 0; i < 511; i++) {
+    for (int i = 0; i < MAX_Q; i++) {
         destroyQueue(full_q[i]);
     }
 
-    for (int i = 0; i < 511; i++) {
+    for (int i = 0; i < MAX_Q; i++) {
         full_q[i] = createQueue();
     }
 
-    for (int i = 0; i < 511; i++) {
+    for (int i = 0; i < MAX_Q; i++) {
         enqueueByte(full_q[i], i);
     }
 
-    for (int i = 0; i < 511; i++) {
+    for (int i = 0; i < MAX_Q; i++) {
         dequeueByte(full_q[i]);
     }
 
-    for (int i = 0; i < 511; i++) {
+    for (int i = 0; i < MAX_Q; i++) {
         destroyQueue(full_q[i]);
     }
 
@@ -247,12 +259,13 @@ static void test_4(void **state)
     assert_int_equal(has_illegal_op, 1);
     destroyQueue(q0);
 
+    const int MAX_Q = 254;
 
     // mem out
     resetErrors();
 
-    Q* full_q[511];
-    for (int i = 0; i < 511; i++) {
+    Q* full_q[MAX_Q];
+    for (int i = 0; i < MAX_Q; i++) {
         full_q[i] = createQueue();
     }
 
@@ -260,7 +273,7 @@ static void test_4(void **state)
     (void)out;
     assert_int_equal(has_out_of_mem, 1);
 
-    for (int i = 0; i < 511; i++) {
+    for (int i = 0; i < MAX_Q; i++) {
         destroyQueue(full_q[i]);
     }
 
