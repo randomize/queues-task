@@ -234,20 +234,36 @@ static inline node_t* index_to_node(unsigned char index);
 
 
 
-// empty root has no data and empty head
+// single root has no head and tail
+static inline bool is_single_root(node_t* root);
+
+// empty root is single root that has no no data
 static inline bool is_empty_root(node_t* root);
 
-// single root has data (cntt bytes), but has empty head
-static inline bool is_single_root(node_t* root);
+// checks if single root has more extra slots for data
+static inline bool is_full_root(node_t* root);
+
+// checks if root has tail node with all slots filled
+static inline bool is_full_tail(node_t* root);
+
+// checks if root has emtpy head (i.e head exists but has no data)
+static inline bool is_empty_head(node_t* root);
+
+// checks if root has emtpy tail (i.e tail exists but has no data)
+static inline bool is_empty_tail(node_t* root);
 
 // root that has head and tail the same values
 static inline bool is_headtail_root(node_t* root);
 
-// gets head node of root
-static inline node_t* get_root_head(node_t* root);
 
-// gets tail node of root
+
+// getters settors for head/tail
+
+static inline node_t* get_root_head(node_t* root);
 static inline node_t* get_root_tail(node_t* root);
+static inline void set_root_head(node_t* root, node_t* head, unsigned char cnt);
+static inline void set_root_tail(node_t* root, node_t* tail, unsigned char cnt);
+
 
 // gets byte from single root
 static inline unsigned char pop_single_root_data(node_t* root);
@@ -258,7 +274,7 @@ static inline void push_single_root_data(node_t* root, unsigned char b);
 // gets byte from root, needs input byte to shift data, 
 // non-single root must be full filled, function rotates
 // bytes of root's payload to make it FIFO
-static inline unsigned char pop_root_data(node_t* root, unsigned char in);
+static inline unsigned char shift_root_data(node_t* root, unsigned char in);
 
 // gets byte from next node, decrements cnth
 static inline unsigned char pop_head_data(node_t* root);
@@ -267,12 +283,23 @@ static inline unsigned char pop_head_data(node_t* root);
 // only used when head==tail
 static inline unsigned char pop_tail_data(node_t* root);
 
-// gets last byte of tail
-static inline unsigned char pop_tail_last(node_t* root, unsigned char next);
+// gets last byte of full tail, so it can became normal node,
+// also sets nodes next index to given value
+static inline unsigned char swap_tail(node_t* root, node_t* newtail);
+
+// adds data to roots tail node
+static inline void push_tail_data(node_t* root, unsigned char b);
+
+// makes root single
+static inline void make_root_single(node_t* root);
 
 
-// get node's next node
+
+
+// gettters/setters for node's next node
+
 static inline node_t* get_node_next(node_t* node);
+static inline void set_node_next(node_t* node, node_t* next);
 
 
 
@@ -314,24 +341,50 @@ static inline node_t* index_to_node(unsigned char index)
 
 // Root nodes related fuctions
 
-static inline bool is_empty_root(node_t* root)
-{
-    assert(bounds_check(root));
-    return root->as_root.head == 0 && root->as_root.cntt == 0;
-}
-
 static inline bool is_single_root(node_t* root)
 {
     assert(bounds_check(root));
-    return root->as_root.head == 0 && root->as_root.cntt != 0;
+    return root->as_root.head == 0 ;
+}
+
+static inline bool is_empty_root(node_t* root)
+{
+    assert(bounds_check(root));
+    return is_single_root(root) && root->as_root.cntt == 0;
+}
+
+static inline bool is_full_root(node_t* root) 
+{
+    assert(bounds_check(root));
+    assert(is_single_root(root));
+    return root->as_root.cntt == ROOT_PAYLOAD;
+}
+
+static inline bool is_full_tail(node_t* root)
+{
+    assert(bounds_check(root));
+    assert(!is_single_root(root));
+    return root->as_root.cntt == TAIL_PAYLOAD;
+}
+
+static inline bool is_empty_head(node_t* root)
+{
+    assert(bounds_check(root));
+    assert(!is_single_root(root));
+    return root->as_root.cnth == 0;
+}
+
+static inline bool is_empty_tail(node_t* root)
+{
+    assert(bounds_check(root));
+    assert(!is_single_root(root));
+    return root->as_root.cntt == 0;
 }
 
 static inline bool is_headtail_root(node_t* root)
 {
     assert(bounds_check(root));
-    assert(!is_empty_root(root));
-    assert(!is_single_root(root));
-    return root->as_root.head == root->as_root.tail;
+    return is_single_root(root) && root->as_root.head == root->as_root.tail;
 }
 
 static inline node_t* get_root_head(node_t* root)
@@ -355,6 +408,25 @@ static inline node_t* get_root_tail(node_t* root)
     assert(t != root);
     return t;
 }
+
+static inline void set_root_head(node_t* root, node_t* head, unsigned char cnt)
+{
+    assert(bounds_check(root));
+    assert(bounds_check(head));
+    assert(cnt < NODE_PAYLOAD);
+    root->as_root.head = node_to_index(head);
+    root->as_root.cnth = cnt;
+}
+
+static inline void set_root_tail(node_t* root, node_t* tail, unsigned char cnt)
+{
+    assert(bounds_check(root));
+    assert(bounds_check(tail));
+    assert(cnt < TAIL_PAYLOAD);
+    root->as_root.tail = node_to_index(tail);
+    root->as_root.cntt = cnt;
+}
+
 
 static inline unsigned char pop_single_root_data(node_t* root)
 {
@@ -384,29 +456,24 @@ static inline unsigned char pop_single_root_data(node_t* root)
 static inline void push_single_root_data(node_t* root, unsigned char b)
 {
     assert(bounds_check(root));
-    assert(!is_empty_root(root));
     assert(is_single_root(root));
 
     unsigned char cnt = root->as_root.cntt;
-    assert(cnt > 0 && cnt <= ROOT_PAYLOAD);
+    assert(cnt < ROOT_PAYLOAD - 1);
 
     unsigned char* d = root->as_root.data;
     d[cnt] = b;
     root->as_root.cntt = cnt + 1;
 }
 
-static inline unsigned char pop_root_data(node_t* root, unsigned char new)
+static inline unsigned char shift_root_data(node_t* root, unsigned char new)
 {
     assert(bounds_check(root));
-    assert(!is_empty_root(root));
     assert(!is_single_root(root));
 
 
     unsigned char* d = root->as_root.data;
     unsigned char p = d[0];
-
-    /* unsigned char h = root->as_root.head; */
-    /* unsigned char t = root->as_root.tail; */
 
     // a bit hacky but fast - lets shift entire thing ;)
     unsigned int root_d = root->as_ints[0];
@@ -422,7 +489,6 @@ static inline unsigned char pop_root_data(node_t* root, unsigned char new)
 static inline unsigned char pop_head_data(node_t* root)
 {
     assert(bounds_check(root));
-    assert(!is_empty_root(root));
     assert(!is_single_root(root));
     assert(!is_headtail_root(root));
 
@@ -451,11 +517,10 @@ static inline unsigned char pop_head_data(node_t* root)
 static inline unsigned char pop_tail_data(node_t* root)
 {
     assert(bounds_check(root));
-    assert(!is_empty_root(root));
     assert(!is_single_root(root));
     assert(is_headtail_root(root));
 
-    node_t* tail = get_root_head(root);
+    node_t* tail = get_root_tail(root);
 
     unsigned char cnt = root->as_root.cntt;
     assert(cnt > 0 && cnt <= TAIL_PAYLOAD);
@@ -473,18 +538,50 @@ static inline unsigned char pop_tail_data(node_t* root)
     return p;
 }
 
-static inline unsigned char pop_tail_last(node_t* root, unsigned char next)
+static inline unsigned char swap_tail(node_t* root, node_t* newtail)
 {
     assert(bounds_check(root));
-    assert(!is_empty_root(root));
+    assert(bounds_check(newtail));
     assert(!is_single_root(root));
-    assert(!is_headtail_root(root));
+    assert(root->as_root.cntt == TAIL_PAYLOAD);
 
     node_t* tail = get_root_tail(root);
-    unsigned char* d = tail->as_node.data;
-    unsigned char p = d[0];
+    unsigned char* d = tail->as_node.data + TAIL_PAYLOAD - 1;
+    unsigned char p = *d;
+    *d = node_to_index(newtail);
+    if(is_headtail_root(root)) // if its first time we expand
+    {
+        root->as_root.cnth = NODE_PAYLOAD;
+    }
+    set_root_tail(root, newtail, 0);
+    return p;
 }
 
+
+static inline void push_tail_data(node_t* root, unsigned char b)
+{
+    assert(bounds_check(root));
+    assert(!is_single_root(root));
+
+    node_t* tail = get_root_tail(root);
+    // increment, write to tail
+    unsigned char cnt = root->as_root.cntt;
+    assert(cnt < TAIL_PAYLOAD);
+
+    unsigned char* d = tail->as_root.data;
+    d[cnt] = b;
+    tail->as_root.cntt = cnt + 1;
+}
+
+static inline void make_root_single(node_t* root)
+{
+    assert(bounds_check(root));
+    assert(!is_single_root(root));
+    root->as_root.cntt = ROOT_PAYLOAD;
+    root->as_root.cnth = 0;
+    root->as_root.head = 0;
+    root->as_root.tail = 0;
+}
 // Simple node related
 
 static inline node_t* get_node_next(node_t* node)
@@ -493,6 +590,12 @@ static inline node_t* get_node_next(node_t* node)
     return  index_to_node(node->as_node.next);
 }
 
+static inline void set_node_next(node_t* node, node_t* next)
+{
+    assert(bounds_check(node));
+    assert(bounds_check(next));
+    node->as_node.next = node_to_index(next);
+}
 
 
 // ========================================================================== //
@@ -558,7 +661,7 @@ void destroyQueue(Q* q)
 {
     node_t* root = get_queue_root(q);
 
-    if (is_empty_root(root) || is_single_root(root))
+    if (is_single_root(root)) // if its only one node - just free it
     {
         free_node(root);
         return;
@@ -567,14 +670,14 @@ void destroyQueue(Q* q)
     node_t* t = get_root_tail(root);
     node_t* p = get_root_head(root);
 
-    if (t == p)
+    if (t == p) // if its two nodes - free both
     {
         free_node(t);
         free_node(root);
         return;
     }
 
-    while (p != t)
+    while (p != t) // walk through the chain and free them all
     {
         node_t* pp = get_node_next(p);
         free_node(p);
@@ -588,34 +691,37 @@ void enqueueByte(Q* q, unsigned char b)
 {
     node_t* root = get_queue_root(q);
 
-    if (is_empty_root(root))
+    if (is_single_root(root))
     {
-        make_single_root(root, b);
-        return;
-    }
-
-    node_t* prew = get_prw(root); // can be root itself!
-
-    if (!is_single_root(root))
-    {
-        if (!is_full_node(prew))
+        if (!is_full_root(root))
         {
-            add_data_B(prew, b);
-            swap_data_A_B(prew);
+            push_single_root_data(root, b);
+            return;
+        } 
+        else
+        {
+            node_t* newman = alloc_node();
+            if (newman == NULL) return;
+            set_root_tail(root, newman, 0);
+            set_root_head(root, newman, 0);
+            push_tail_data(root, b);
             return;
         }
+    }
+
+
+
+    if (is_full_tail(root))
+    {
+        // we run out fo tail data
+        node_t* newman = alloc_node();
+        if (newman == NULL) return;
+        char old_b = swap_tail(root, newman);
+        push_tail_data(root, old_b);
 
     }
 
-    node_t* newman = alloc_node();
-    if (newman == NULL)
-        return;
-
-    newman->data = b;
-
-    set_nxt(newman, root);
-    set_nxt(prew, newman);
-    set_prw(root, newman);
+    push_tail_data(root, b);
 
 }
 
@@ -634,43 +740,36 @@ unsigned char dequeueByte(Q* q)
         return pop_single_root_data(root);
     }
 
-    node_t* h = get_root_head(root); 
-    node_t* t = get_root_tail(root);
 
-    if (h == t)
+    if (is_headtail_root(root))
     {
 
-        unsigned char head_ret = pop_tail_data(root); // pops from 8 data field
+        unsigned char tail_ret = pop_tail_data(root); // pops from 8 data field
+        unsigned char ret = shift_root_data(root, tail_ret);
 
-        free_node(head);
-        make_root_single(root);
+        if (is_empty_tail(root))
+        {
+            free_node(get_root_tail(root));
+            make_root_single(root);
+        }
+
+        return ret;
     }
 
-    unsigned char head_ret = pop_head_data(head); // what if head is also tail!!!!!
-    unsigned char ret = pop_root_data(root, head_ret);
+    unsigned char head_ret = pop_head_data(root);
+    unsigned char ret = shift_root_data(root, head_ret);
 
-    if (!is_empty_head(head)) {
+    if (is_empty_head(root))
+    {
+        node_t* head = get_root_head(root);
+        set_root_head(root, get_node_next(head), NODE_PAYLOAD);
+
         return ret;
     }
 
 
-    unsigned char old = root->data;
-    node_t* next = get_nxt(root);
 
-    if (is_full_node(next))
-    {
-        root->data = remove_data_B(next);
-        return old;
-    }
-
-    root->data = next->data;
-    set_nxt(root, get_nxt(next));
-    if (get_prw(root) == next) // it was last node
-        set_prw(root, root);   // so make me single again
-
-    free_node(next);
-
-    return old;
+    return ret;
 }
 
 void printQueue(Q* q)
