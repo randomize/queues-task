@@ -126,13 +126,19 @@ static void test_1(void **state)
     Q* q0 = createQueue();
     assert_non_null(q0);
 
-    for (int j = 0; j < 1200; j++) {
-        /* printf("> %d\n", j); */
-        for (int i = 0; i < j; i++) {
+    for (int j = 0; j < 1780; j++)
+    {
+        for (int i = 0; i < j; i++)
+        {
             enqueueByte(q0, i%256);
         }
-        for (int i = 0; i < j; i++) {
-            assert_int_equal(dequeueByte(q0), i%256);
+        for (int i = 0; i < j; i++)
+        {
+            unsigned char d = dequeueByte(q0);
+            unsigned char c = i%256;
+            if (d != c)
+                printf("expected: %d but got %d\n", c, d);
+            assert_int_equal(d, c);
         }
     }
 
@@ -318,7 +324,7 @@ static void test_5(void **state) // random load
         while(1)
         {
             unsigned char from;
-            if (rand()%1000 == 0 && in_l > 0) {
+            if (rand()%2000 == 0 && in_l > 0) {
                 from = dequeueByte(in);
                 assert_int_equal(has_illegal_op, 0);
                 in_l--;
@@ -348,7 +354,7 @@ static void test_5(void **state) // random load
                 }
             }
 
-            if (rand()%1000 == 0) {
+            if (rand()%2000 == 0) {
                 enqueueByte(out, from);
                 op_cnt++;
             } else {
