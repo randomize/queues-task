@@ -1,17 +1,23 @@
 
 CC=gcc
-CFLAGS=-c -Wall -I. -Wall -Wextra -Wpedantic -std=c11 -g0 -O3
+CFLAGS= -c -Wall -I. -Wall -Wextra -Wpedantic -std=c11
 LDFLAGS=-lcmocka
 SOURCES=main.c queue2.c
 OBJECTS=$(SOURCES:.c=.o)
 EXECUTABLE=queue
 
-all: $(SOURCES) $(EXECUTABLE)
+all: CFLAGS += -DNDEBUG -ggdb -O3
+all: executable
+
+debug: CFLAGS += -DDEBUG -ggdb -O0
+debug: executable
+
+executable: $(SOURCES) $(EXECUTABLE)
     
 $(EXECUTABLE): $(OBJECTS) 
 	$(CC) $(LDFLAGS) $(OBJECTS) -o $@
 
-.cpp.o:
+.c.o:
 	$(CC) $(CFLAGS) $< -o $@
 
 clean:
