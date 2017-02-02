@@ -31,12 +31,6 @@
 
 /*
 
-## Preconditions
-
-    assume sizeof(int) == sizeof(node_t) == 4
-    assume that CHAR_BIT == 8
-    assume that best alignment on target platform is 4
-
 
 ## Base ideas
 
@@ -57,7 +51,23 @@
 
       (worst) created 63 empty queues and one full - 1343 = (255 - 64 - 1)*7 + 8 + 5
               created 64 all equally full          - 1721 = (255 - 64 - 64)*7 + 64*8 + 64*5
-              created 1 full queue                 - 1784
+      (best)  created 1 full queue                 - 1784
+
+
+## Why not 16-byte nodes?
+
+    I was considering alternative solution where nodes are 16 bytes too.
+    Its ratio of user-data to service-data is bigger, there will be 127 nodes
+    payloads: root - 13 bytes, node - 15 and tail node 16
+    but capacity cases will be worse on edge cases when many empty queues exist
+
+     (worst) created 63 empty queues and one full - 959 = (127 - 64 - 1)*15 + 13 + 16
+             created 64 all equally full          - not possible, not enough nodes for equual - only 13*64 bytes each
+     (best)  created 1 full queue                 - 1903
+
+     with variation where root nodes stored in separate index and have no data we will 
+     get even worse, in case when 64 nodes created, 63 pushed 1 element (so 16 bit block is allocated)
+     and will almost nothig will be left for last one 64th queue
 
 
 ## Performance
