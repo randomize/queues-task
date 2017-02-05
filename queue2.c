@@ -584,6 +584,22 @@ static inline void push_tail_data(node_t* root, unsigned char b)
     root->as_root.cntt = cnt + 1;
 }
 
+static inline void push_tail_data2(node_t* root, unsigned char b, unsigned char a)
+{
+    assert(bounds_check(root));
+    assert(!is_single_root(root));
+
+    node_t* tail = get_root_tail(root);
+    // increment, write to tail
+    unsigned char cnt = root->as_root.cntt;
+    assert(cnt < TAIL_PAYLOAD);
+
+    unsigned char* d = tail->as_root.data;
+    d[cnt++] = b;
+    d[cnt] = a;
+    root->as_root.cntt = cnt + 1;
+}
+
 static inline void make_root_single(node_t* root)
 {
     assert(bounds_check(root));
@@ -727,7 +743,8 @@ void enqueueByte(Q* q, unsigned char b)
         node_t* newman = alloc_node();
         if (newman == NULL) return;
         char old_b = swap_tail(root, newman);
-        push_tail_data(root, old_b);
+        push_tail_data2(root, old_b, b);
+        return;
 
     }
 
