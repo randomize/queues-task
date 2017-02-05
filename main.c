@@ -160,7 +160,7 @@ static void test_1(void **state)
             unsigned char d = dequeueByte(q0);
             unsigned char c = i%256;
             if (d != c)
-                printf("%d) step %d expected: %d but got %d\n", l, i, c, d);
+                printf("%d) randstep %d expected: %d but got %d\n", l, i, c, d);
             assert_int_equal(d, c);
         }
     }
@@ -421,6 +421,43 @@ static void test_5(void **state) // random load
     printf("> tested %d operatins\n", op_cnt);
 }
 
+static void test_6(void **state) // bug
+{
+
+    (void) state; // unused
+
+    resetErrors();
+
+    Q* q0 = createQueue();
+    assert_non_null(q0);
+
+    for (int i = 0; i < 14; i++)
+    {
+        enqueueByte(q0, i%256);
+    }
+
+    destroyQueue(q0);
+    q0 = createQueue();
+
+    for (int j = 0; j < 1780; j++)
+    {
+        for (int i = 0; i < j; i++)
+        {
+            enqueueByte(q0, i%256);
+        }
+        for (int i = 0; i < j; i++)
+        {
+            unsigned char d = dequeueByte(q0);
+            unsigned char c = i%256;
+            if (d != c)
+                printf("%d) step %d expected: %d but got %d\n", j, i, c, d);
+            assert_int_equal(d, c);
+        }
+    }
+
+    destroyQueue(q0);
+
+}
 /////////////////////////////////////////////////////////////////////////////
 
 static void perf_test_0()
@@ -487,6 +524,8 @@ int main(void)
     /* perf_test_0(); */
 
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test(test_6), // bad destroy bug test
+        cmocka_unit_test(test_1),
         cmocka_unit_test(test_0),
         cmocka_unit_test(test_1),
         cmocka_unit_test(test_2),
