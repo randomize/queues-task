@@ -289,7 +289,7 @@ static void test_4(void **state)
     assert_int_equal(has_illegal_op, 1);
     destroyQueue(q0);
 
-    const int MAX_Q = 254;
+    const int MAX_Q = 255;
 
     // mem out
     resetErrors();
@@ -463,7 +463,8 @@ static void test_6(void **state) // bug
 static void perf_test_0()
 {
 
-    long results[1200];
+    const int MAX_N = 1500;
+    long results[MAX_N];
     int s = 0; // optimization killer
 
     struct timespec begin, end;
@@ -472,7 +473,7 @@ static void perf_test_0()
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     s += (begin.tv_nsec - end.tv_nsec);
 
-    for (int i = 0; i < 1200; i++)
+    for (int i = 0; i < MAX_N; i++)
     {
         unsigned char ii = i;
         /* enqueueByte(q, ii); */
@@ -491,22 +492,22 @@ static void perf_test_0()
     int min = 0;
     int max = 0;
     long long sum = 0;
-    /* FILE* f = fopen("export.txt", "wt"); */
-    for (int i = 0; i < 1200; i++) 
+    FILE* f = fopen("bench_0.txt", "wt");
+    for (int i = 0; i < MAX_N; i++) 
     {
         long diff = results[i];
         if (results[max] < diff) max = i;
         if (results[min] > diff) min = i;
         sum += diff;
-        /* fprintf(f, "%lu ", diff); */
+        fprintf(f, "%lu ", diff);
     }
-    /* fclose(f); */
+    fclose(f);
 
 
-    printf("min: %lu at %d\nmax %lu at %d\navg: %f\ns=%d",
+    printf("min: %lu at %d\nmax %lu at %d\navg: %f\ns=%d\n",
             results[min], min,
             results[max], max,
-            sum / (double)1200,
+            sum / (double)MAX_N,
             s);
 
     destroyQueue(q);
@@ -521,7 +522,7 @@ int main(void)
     setIllegalOperationCallback(onIllegalOperation);
     setOutOfMemoryCallback(onOutOfMemory);
 
-    /* perf_test_0(); */
+    perf_test_0();
 
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_6), // bad destroy bug test

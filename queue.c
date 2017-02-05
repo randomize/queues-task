@@ -696,11 +696,11 @@ void destroyQueue(Q* q)
 
     node_t* t = get_root_tail(root);
     node_t* p = get_root_head(root);
+    free_node(root);
 
     if (t == p) // if its two nodes - free both
     {
         free_node(t);
-        free_node(root);
         return;
     }
 
