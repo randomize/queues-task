@@ -1,8 +1,8 @@
 
 CC=gcc
-CFLAGS= -c -Wall -I. -Wall -Wextra -Wpedantic -std=c11
-LDFLAGS=-lcmocka
-SOURCES=main.c queue2.c
+CFLAGS= -c -Wall -I. -Wall -Wextra -Wpedantic -std=gnu11
+LDFLAGS=-lcmocka -lrt
+SOURCES=main.c queue.c
 OBJECTS=$(SOURCES:.c=.o)
 EXECUTABLE=queue
 

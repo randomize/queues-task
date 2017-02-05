@@ -1,12 +1,16 @@
 
 
-#include "queue2.h"
+#include "queue.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <setjmp.h>
 #include <cmocka.h>
+#include <time.h>
+#include <unistd.h>
+#include <limits.h>
+#include <string.h>
 
 
 #define BUFFER_LIMIT 2048
@@ -126,6 +130,7 @@ static void test_1(void **state)
     Q* q0 = createQueue();
     assert_non_null(q0);
 
+    // sequential push-pop 
     for (int j = 0; j < 1780; j++)
     {
         for (int i = 0; i < j; i++)
@@ -137,10 +142,29 @@ static void test_1(void **state)
             unsigned char d = dequeueByte(q0);
             unsigned char c = i%256;
             if (d != c)
-                printf("expected: %d but got %d\n", c, d);
+                printf("%d) step %d expected: %d but got %d\n", j, i, c, d);
             assert_int_equal(d, c);
         }
     }
+
+    // randomzised push-pop
+    for (int j = 0; j < 10000; j++)
+    {
+        int l = rand() % 1780;
+        for (int i = 0; i < l; i++)
+        {
+            enqueueByte(q0, i%256);
+        }
+        for (int i = 0; i < l; i++)
+        {
+            unsigned char d = dequeueByte(q0);
+            unsigned char c = i%256;
+            if (d != c)
+                printf("%d) step %d expected: %d but got %d\n", l, i, c, d);
+            assert_int_equal(d, c);
+        }
+    }
+
 
     for (int i = 0; i < 1021; i++) {
         enqueueByte(q0, 42);
@@ -399,12 +423,68 @@ static void test_5(void **state) // random load
 
 /////////////////////////////////////////////////////////////////////////////
 
+static void perf_test_0()
+{
+
+    long results[1200];
+    int s = 0; // optimization killer
+
+    struct timespec begin, end;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &begin); // warmup clock
+    Q* q = createQueue();
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    s += (begin.tv_nsec - end.tv_nsec);
+
+    for (int i = 0; i < 1200; i++)
+    {
+        unsigned char ii = i;
+        /* enqueueByte(q, ii); */
+        /* s += dequeueByte(q); */
+        /* for (int j = 0; j < BUFFER_LIMIT; j++) { s += buffer[i]; } // warm cache */
+        /* s += (begin.tv_nsec - end.tv_nsec); */
+        /* s += buffer[0]; */
+        /* s += buffer[8]; */
+
+        clock_gettime(CLOCK_MONOTONIC_RAW, &begin);
+        enqueueByte(q, ii);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        results[i] = end.tv_nsec - begin.tv_nsec;
+    }
+
+    int min = 0;
+    int max = 0;
+    long long sum = 0;
+    /* FILE* f = fopen("export.txt", "wt"); */
+    for (int i = 0; i < 1200; i++) 
+    {
+        long diff = results[i];
+        if (results[max] < diff) max = i;
+        if (results[min] > diff) min = i;
+        sum += diff;
+        /* fprintf(f, "%lu ", diff); */
+    }
+    /* fclose(f); */
+
+
+    printf("min: %lu at %d\nmax %lu at %d\navg: %f\ns=%d",
+            results[min], min,
+            results[max], max,
+            sum / (double)1200,
+            s);
+
+    destroyQueue(q);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
 int main(void)
 {
     srand(0);
     max_nodes = initQueues(buffer, BUFFER_LIMIT);
     setIllegalOperationCallback(onIllegalOperation);
     setOutOfMemoryCallback(onOutOfMemory);
+
+    /* perf_test_0(); */
 
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_0),
@@ -416,6 +496,7 @@ int main(void)
         cmocka_unit_test(test_0), // sanyty check after stress
         cmocka_unit_test(test_5), // random stress
     };
+
 
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

@@ -23,7 +23,7 @@
 #define QUEUE_H
 
 
-typedef int Q;
+typedef long Q; // TODO: how to forward declare node_t here? may shoot foot as is
 
 /*
  * Sets buffer to work with and inits library,
