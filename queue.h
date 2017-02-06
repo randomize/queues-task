@@ -25,13 +25,26 @@
 
 typedef long Q; // TODO: how to forward declare node_t here? may shoot foot as is
 
+typedef struct
+{
+    const char* name;                    // just name for your impl
+    int max_empty_queues;                // if just calling createQueue - how many will it handdle before out of mem?
+    int max_nonempty_queues;             // if calling createQueue and putting there at least 1 byte in each - how manu queues will be there before out of mem?
+    int max_els_in_single;               // if created one queue and put there as many bytes as passible before out of mem, what is number of bytes
+    int max_els_in_16even;               // with 16 queues, how many bytes will each have being evenly distributed
+    int max_els_in_64even;               // same with 64 queues
+    int max_els_in_max_even_queues;      // same with max_nonempty_queues value specified before
+    int max_els_in_single_with_63_empty; // if I create 63 empty queues and one work queue and put all data to 64th work queue - how many bytes will that be?
+} queueMetrics_t;
+
+
 /*
  * Sets buffer to work with and inits library,
  * returs nubmer of elements max capacity
  * zeros out buffer with memset
  * Complexity: O(n) on len (memset)
  */
-int initQueues(unsigned char* buffer, unsigned int len);
+queueMetrics_t initQueues(unsigned char* buffer, unsigned int len);
 
 
 /*
@@ -77,15 +90,6 @@ void enqueueByte(Q* q, unsigned char b);
  */
 unsigned char dequeueByte(Q* q);
 
-/*
- *     Debug helper print, outputs queue to
- * stdout in form [1 9 2 5 1]
- * Q* q must be value returned by createQueue,
- * otherwise dehavior is undefined.
- *
- * Complexity: O(n) on number of elements is q
- */
-void printQueue(Q* q);
 
 // Callback types
 typedef void (*onOutOfMem_cb_t)();
@@ -107,6 +111,17 @@ void setOutOfMemoryCallback(onOutOfMem_cb_t cb);
 */
 void setIllegalOperationCallback(onIllegalOperation_cb_t cb);
 
+///////////////// non-mandotory api ///////////////////////////////////////////////
+
+/*
+ *     Debug helper print, outputs queue to
+ * stdout in form [1 9 2 5 1]
+ * Q* q must be value returned by createQueue,
+ * otherwise dehavior is undefined.
+ *
+ * Complexity: O(n) on number of elements is q
+ */
+void printQueue(Q* q);
 
 
 #endif // QUEUE_H

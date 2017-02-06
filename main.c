@@ -19,7 +19,7 @@ static unsigned char buffer[BUFFER_LIMIT];
 
 static int has_out_of_mem;
 static int has_illegal_op;
-static int max_nodes;
+static queueMetrics_t metrics;
 
 void onOutOfMemory()
 {
@@ -130,17 +130,16 @@ static void test_1(void **state)
     Q* q0 = createQueue();
     assert_non_null(q0);
 
-    // sequential push-pop 
-    for (int j = 0; j < 1780; j++)
+    // sequential push-pop
+    for (int j = 0; j < metrics.max_els_in_single; j++)
     {
         for (int i = 0; i < j; i++)
-        {
-            enqueueByte(q0, i%256);
-        }
+            enqueueByte(q0, i);
+
         for (int i = 0; i < j; i++)
         {
             unsigned char d = dequeueByte(q0);
-            unsigned char c = i%256;
+            unsigned char c = i;
             if (d != c)
                 printf("%d) step %d expected: %d but got %d\n", j, i, c, d);
             assert_int_equal(d, c);
@@ -150,52 +149,74 @@ static void test_1(void **state)
     // randomzised push-pop
     for (int j = 0; j < 10000; j++)
     {
-        int l = rand() % 1780;
+        int l = rand() % metrics.max_els_in_single;
+
         for (int i = 0; i < l; i++)
-        {
-            enqueueByte(q0, i%256);
-        }
+            enqueueByte(q0, i);
+
         for (int i = 0; i < l; i++)
         {
             unsigned char d = dequeueByte(q0);
-            unsigned char c = i%256;
+            unsigned char c = i;
             if (d != c)
                 printf("%d) randstep %d expected: %d but got %d\n", l, i, c, d);
             assert_int_equal(d, c);
         }
     }
 
-
-    for (int i = 0; i < 1021; i++) {
-        enqueueByte(q0, 42);
-    }
-
-    for (int i = 0; i < 4; i++)
-        dequeueByte(q0);
-
-    Q* q1 = createQueue();
-    enqueueByte(q1, 42);
-    enqueueByte(q1, 255);
-    enqueueByte(q1, 0);
-
     destroyQueue(q0);
 
-    assert_int_equal(dequeueByte(q1), 42);
-    assert_int_equal(dequeueByte(q1), 255);
-    assert_int_equal(dequeueByte(q1), 0);
 
-    destroyQueue(q1);
+    Q* q1 = createQueue();
+
+    // same byte series
+    for (int j = 0; j < metrics.max_els_in_single; j++)
+    {
+        for (int i = 0; i < j; i++)
+            enqueueByte(q0, j);
+
+        for (int i = 0; i < j; i++)
+        {
+            unsigned char d = dequeueByte(q0);
+            unsigned char c = j;
+            if (d != c)
+                printf("%d) step %d expected: %d but got %d\n", j, i, c, d);
+            assert_int_equal(d, c);
+        }
+    }
+
+    // same byte random series
+    for (int j = 0; j < 10000; j++)
+    {
+        unsigned char b = rand();
+        int l = rand() % metrics.max_els_in_single;
+        for (int i = 0; i < l; i++)
+        {
+            enqueueByte(q1, b);
+        }
+        for (int i = 0; i < l; i++)
+        {
+            unsigned char d = dequeueByte(q1);
+            if (d != b)
+                printf("%d) series-push %d expected: %d but got %d\n", l, i, b, d);
+            assert_int_equal(d, b);
+        }
+
+    }
 
     Q* q2 = createQueue();
-    for (int i = 0; i < 256; i++) {
-        enqueueByte(q2, i);
-    }
 
-    for (int i = 0; i < 256; i++) {
-        assert_int_equal(dequeueByte(q2), i);
-    }
+    for (int i = 0; i < metrics.max_els_in_single_with_63_empty; i++)
+        enqueueByte(q2, i);
+
+    for (int i = 0; i < metrics.max_els_in_single_with_63_empty; i++)
+        assert_int_equal(dequeueByte(q2), i % 256);
+
+    for (int i = 0; i < metrics.max_els_in_single_with_63_empty; i++)
+        enqueueByte(q1, i);
 
     destroyQueue(q2);
+    destroyQueue(q1);
 
     assert_int_equal(has_out_of_mem, 0);
     assert_int_equal(has_illegal_op, 0);
@@ -232,47 +253,88 @@ static void test_3(void **state) // stress
 {
     (void) state; // unused
 
-    const int MAX_Q = 254;
 
+    // test empty queues max
+
+    resetErrors();
+
+    const int MAX_EQ = metrics.max_empty_queues;
+
+    Q* full_eq[MAX_EQ];
+
+    for (int i = 0; i < MAX_EQ; i++)
+        full_eq[i] = createQueue();
+
+    assert_int_equal(has_out_of_mem, 0);
+    assert_int_equal(has_illegal_op, 0);
+
+    for (int i = 0; i < MAX_EQ; i++)
+        destroyQueue(full_eq[i]);
+
+    assert_int_equal(has_out_of_mem, 0);
+    assert_int_equal(has_illegal_op, 0);
+
+    // randomize destroy (same, but shuffled)
+
+    resetErrors();
+
+    for (int i = 0; i < MAX_EQ; i++)
+        full_eq[i] = createQueue();
+
+    assert_int_equal(has_out_of_mem, 0);
+    assert_int_equal(has_illegal_op, 0);
+
+    for(int i = MAX_EQ - 1; i > 0; i--)
+    {
+        int j = rand() % (i + 1);
+        Q* t = full_eq[i]; full_eq[i] = full_eq[j]; full_eq[j] = t;
+    }
+
+    for (int i = 0; i < MAX_EQ; i++)
+        destroyQueue(full_eq[i]);
+
+    assert_int_equal(has_out_of_mem, 0);
+    assert_int_equal(has_illegal_op, 0);
+
+    // test max even queues
+
+    resetErrors();
+
+    const int MAX_Q = metrics.max_nonempty_queues;
+    const int MAX_EL = metrics.max_els_in_max_even_queues;
     Q* full_q[MAX_Q];
 
-    for (int i = 0; i < MAX_Q; i++) {
-        Q* q = createQueue();
-        assert_non_null(q);
-        full_q[i] = q;
-    }
 
-    for (int i = 0; i < MAX_Q; i++) {
-        destroyQueue(full_q[i]);
-    }
-
-    for (int i = 0; i < MAX_Q; i++) {
+    for (int i = 0; i < MAX_Q; i++)
         full_q[i] = createQueue();
-    }
 
-    for (int i = 0; i < MAX_Q; i++) {
-        enqueueByte(full_q[i], i);
-    }
+    for (int i = 0; i < MAX_Q; i++)
+        for (int j = 0; j < MAX_EL; j++)
+            enqueueByte(full_q[i], i);
 
-    for (int i = 0; i < MAX_Q; i++) {
+    for (int i = 0; i < MAX_Q; i++)
         destroyQueue(full_q[i]);
-    }
 
-    for (int i = 0; i < MAX_Q; i++) {
+    assert_int_equal(has_out_of_mem, 0);
+    assert_int_equal(has_illegal_op, 0);
+
+    for (int i = 0; i < MAX_Q; i++)
         full_q[i] = createQueue();
-    }
 
-    for (int i = 0; i < MAX_Q; i++) {
-        enqueueByte(full_q[i], i);
-    }
+    for (int i = 0; i < MAX_Q; i++)
+        for (int j = 0; j < MAX_EL; j++)
+            enqueueByte(full_q[i], i);
 
-    for (int i = 0; i < MAX_Q; i++) {
-        dequeueByte(full_q[i]);
-    }
+    for (int i = 0; i < MAX_Q; i++)
+        for (int j = 0; j < MAX_EL; j++)
+            assert_int_equal(dequeueByte(full_q[i]), i % 256);
 
-    for (int i = 0; i < MAX_Q; i++) {
+    for (int i = 0; i < MAX_Q; i++)
         destroyQueue(full_q[i]);
-    }
+
+    assert_int_equal(has_out_of_mem, 0);
+    assert_int_equal(has_illegal_op, 0);
+    resetErrors();
 
 
 }
@@ -281,6 +343,7 @@ static void test_4(void **state)
 {
     (void) state; // unused
 
+    // pop empty
     resetErrors();
 
     Q* q0 = createQueue();
@@ -289,25 +352,40 @@ static void test_4(void **state)
     assert_int_equal(has_illegal_op, 1);
     destroyQueue(q0);
 
-    const int MAX_Q = 255;
 
     // mem out
     resetErrors();
 
+    const int MAX_Q = metrics.max_empty_queues;
     Q* full_q[MAX_Q];
-    for (int i = 0; i < MAX_Q; i++) {
-        full_q[i] = createQueue();
-    }
 
+    for (int i = 0; i < MAX_Q; i++)
+        full_q[i] = createQueue();
+
+    // try one more
     Q* out = createQueue();
     (void)out;
+
     assert_int_equal(has_out_of_mem, 1);
 
     for (int i = 0; i < MAX_Q; i++) {
         destroyQueue(full_q[i]);
     }
 
+    // mem out2
+    Q* q1 = createQueue();
+
+    for (int i = 0; i < metrics.max_els_in_single; i++)
+        enqueueByte(q1, i);
+
+    // try one more
+    enqueueByte(q1, 0);
+    assert_int_equal(has_out_of_mem, 1);
+
+    destroyQueue(q1);
+
     resetErrors();
+
 
 }
 
@@ -421,43 +499,32 @@ static void test_5(void **state) // random load
     printf("> tested %d operatins\n", op_cnt);
 }
 
-static void test_6(void **state) // bug
+static void test_6(void **state) // bug with destroy
 {
 
     (void) state; // unused
 
     resetErrors();
 
-    Q* q0 = createQueue();
-    assert_non_null(q0);
-
-    for (int i = 0; i < 14; i++)
+    for (int j = 0; j < metrics.max_els_in_single; j++)
     {
-        enqueueByte(q0, i%256);
+        Q* q0 = createQueue();
+        assert_non_null(q0);
+
+        for (int i = 0; i < 14; i++)
+        {
+            enqueueByte(q0, i);
+        }
+        destroyQueue(q0);
+        
     }
 
-    destroyQueue(q0);
-    q0 = createQueue();
-
-    for (int j = 0; j < 1780; j++)
-    {
-        for (int i = 0; i < j; i++)
-        {
-            enqueueByte(q0, i%256);
-        }
-        for (int i = 0; i < j; i++)
-        {
-            unsigned char d = dequeueByte(q0);
-            unsigned char c = i%256;
-            if (d != c)
-                printf("%d) step %d expected: %d but got %d\n", j, i, c, d);
-            assert_int_equal(d, c);
-        }
-    }
-
-    destroyQueue(q0);
+    assert_int_equal(has_out_of_mem, 0);
+    assert_int_equal(has_illegal_op, 0);
+    resetErrors();
 
 }
+
 /////////////////////////////////////////////////////////////////////////////
 
 static void perf_test_0()
@@ -493,7 +560,7 @@ static void perf_test_0()
     int max = 0;
     long long sum = 0;
     FILE* f = fopen("bench_0.txt", "wt");
-    for (int i = 0; i < MAX_N; i++) 
+    for (int i = 0; i < MAX_N; i++)
     {
         long diff = results[i];
         if (results[max] < diff) max = i;
@@ -518,7 +585,7 @@ static void perf_test_0()
 int main(void)
 {
     srand(0);
-    max_nodes = initQueues(buffer, BUFFER_LIMIT);
+    metrics = initQueues(buffer, BUFFER_LIMIT);
     setIllegalOperationCallback(onIllegalOperation);
     setOutOfMemoryCallback(onOutOfMemory);
 

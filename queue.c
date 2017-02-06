@@ -664,7 +664,7 @@ static void free_node(node_t* node)
 // ========================================================================== //
 
 
-int initQueues(unsigned char* buf, unsigned int len)
+queueMetrics_t initQueues(unsigned char* buf, unsigned int len)
 {
     assert(buf != NULL);
     assert(len == 2048);
@@ -675,7 +675,16 @@ int initQueues(unsigned char* buf, unsigned int len)
     buffer_len = len;
     buffer->as_pfree = 1;
 
-    return 1343; // return worst case magic constant
+    queueMetrics_t ret;
+    ret.name = "Eugene's impl";
+    ret.max_empty_queues = 255;
+    ret.max_nonempty_queues = 255;
+    ret.max_els_in_single = 1784;
+    ret.max_els_in_16even = 1769;
+    ret.max_els_in_64even = 1721;
+    ret.max_els_in_max_even_queues = 5;
+    ret.max_els_in_single_with_63_empty = 1343;
+    return ret;
 }
 
 Q* createQueue()
