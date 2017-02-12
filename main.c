@@ -550,10 +550,18 @@ static void perf_test_0()
         /* s += buffer[0]; */
         /* s += buffer[8]; */
 
+        // warmup 
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        enqueueByte(q, ii);
+        dequeueByte(q);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &begin);
+        s += (begin.tv_nsec - end.tv_nsec);
+
         clock_gettime(CLOCK_MONOTONIC_RAW, &begin);
         enqueueByte(q, ii);
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);
         results[i] = end.tv_nsec - begin.tv_nsec;
+        /* dequeueByte(q); */
     }
 
     int min = 0;
@@ -601,7 +609,7 @@ int main(void)
         cmocka_unit_test(test_0), // sanyty check after stress
         cmocka_unit_test(test_4), // limits stress
         cmocka_unit_test(test_0), // sanyty check after stress
-        cmocka_unit_test(test_5), // random stress
+        /* cmocka_unit_test(test_5), // random stress */
     };
 
 
